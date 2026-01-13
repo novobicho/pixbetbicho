@@ -22,5 +22,5 @@ ENV PORT=8080
 # Expor a porta usada pela aplicação
 EXPOSE 8080
 
-# Iniciar a aplicação
-CMD ["npm", "start"]
+# Iniciar a aplicação (roda a configuração do banco antes do servidor)
+CMD ["sh", "-c", "npm run db:setup && npm start"]

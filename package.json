@@ -10,7 +10,8 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:update": "tsx scripts/update-db.ts",
-    "db:migrate": "node scripts/migrate-db.js"
+    "db:migrate": "node scripts/migrate-db.js",
+    "db:setup": "node scripts/db-setup.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
