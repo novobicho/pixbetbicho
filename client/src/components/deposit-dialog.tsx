@@ -34,13 +34,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { 
-  RefreshCw, 
-  CreditCard, 
-  AlertCircle, 
-  CheckCircle2, 
-  XCircle, 
-  ArrowLeft, 
+import {
+  RefreshCw,
+  CreditCard,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  ArrowLeft,
   Copy,
   QrCode,
   Timer,
@@ -80,16 +80,19 @@ interface DepositDialogProps {
   buttonText?: string;
   // Estilo do botão
   buttonVariant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+  // Opção para não renderizar nenhum trigger (usado apenas como componente controlado)
+  noTrigger?: boolean;
 }
 
-export function DepositDialog({ 
-  onSuccess, 
-  open: controlledOpen, 
+export function DepositDialog({
+  onSuccess,
+  open: controlledOpen,
   onOpenChange,
   triggerRef,
   renderAsButton = false,
   buttonText = "Depositar",
-  buttonVariant = "default" 
+  buttonVariant = "default",
+  noTrigger = false
 }: DepositDialogProps) {
   const [open, setOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState<string>("");
@@ -98,11 +101,11 @@ export function DepositDialog({
   const [transactionStatus, setTransactionStatus] = useState<'idle' | 'success' | 'processing' | 'error'>('idle');
   const [transactionDetail, setTransactionDetail] = useState<any>(null);
   const { toast } = useToast();
-  
+
   // Gerenciar estado aberto/fechado
   const isOpen = controlledOpen !== undefined ? controlledOpen : open;
   const setIsOpen = onOpenChange || setOpen;
-  
+
   // Reseta o estado quando o diálogo é fechado
   useEffect(() => {
     if (!isOpen) {
@@ -110,7 +113,7 @@ export function DepositDialog({
       setTransactionDetail(null);
     }
   }, [isOpen]);
-  
+
   // Buscar transações com polling mais rápido (a cada 3 segundos quando processando)
   const { data: paymentTransactions = [] } = useQuery({
     queryKey: ["/api/payment-transactions"],
@@ -128,7 +131,7 @@ export function DepositDialog({
     // Se estamos processando uma transação e ela está nos dados
     if (transactionStatus === 'processing' && transactionDetail && paymentTransactions.length > 0) {
       const currentTransaction = paymentTransactions.find((t: any) => t.id === transactionDetail.transactionId);
-      
+
       if (currentTransaction && currentTransaction.status === 'completed') {
         console.log('Transação concluída detectada:', currentTransaction);
         setTransactionStatus('success');
@@ -157,7 +160,7 @@ export function DepositDialog({
       useBonus: false
     },
   });
-  
+
   // Definir gateway padrão quando os gateways forem carregados
   useEffect(() => {
     if (gateways.length > 0 && !form.getValues().gatewayId) {
@@ -168,10 +171,10 @@ export function DepositDialog({
 
   // Referência para armazenar o ID da transação atual
   const transaction = useRef<number | null>(null);
-  
+
   // Referência para controlar o ciclo de vida durante as chamadas assíncronas
   const disposed = useRef(false);
-  
+
   // Efeito para redefinir a flag disposed quando o componente é montado/desmontado
   useEffect(() => {
     disposed.current = false;
@@ -179,29 +182,29 @@ export function DepositDialog({
       disposed.current = true;
     };
   }, []);
-  
+
   // Função para iniciar polling do status do pagamento
   const startPolling = useCallback((transactionId: number) => {
     transaction.current = transactionId;
     queryClient.invalidateQueries({ queryKey: ["/api/payment-transactions"] });
-    
+
     // Verificação silenciosa e periódica de pagamentos pendentes
     const interval = setInterval(async () => {
       if (disposed.current) return; // Evitar verificação se componente foi desmontado
-      
+
       try {
         // Chamar endpoint de verificação automática
         await fetch('/api/payment-transactions/check-pending', {
           method: 'POST'
         });
-        
+
         // Atualizar dados do usuário para refletir novo saldo se pago
         queryClient.invalidateQueries({ queryKey: ['/api/user'] });
-        
+
         // Verificar se a transação atual foi concluída
         const checkResponse = await fetch(`/api/payment-transactions/${transactionId}`);
         const checkResult = await checkResponse.json();
-        
+
         if (checkResult && checkResult.status === 'completed') {
           // Se a transação foi confirmada, mostrar mensagem e fechar o diálogo
           toast({
@@ -209,7 +212,7 @@ export function DepositDialog({
             description: "Seu saldo foi atualizado com sucesso.",
             variant: "default"
           });
-          
+
           // Limpar intervalo e fechar
           clearInterval(interval);
           setIsOpen(false);
@@ -218,11 +221,11 @@ export function DepositDialog({
         // Erros silenciosos - não interromper o processo
       }
     }, 5000); // Verificar a cada 5 segundos
-    
+
     // Limpar o intervalo quando o componente for desmontado
     return () => clearInterval(interval);
   }, [queryClient, toast, setIsOpen]);
-  
+
   // Consultar as configurações de sistema para verificar o bônus
   const { data: systemSettings = {} } = useQuery({
     queryKey: ["/api/system-settings"],
@@ -232,7 +235,7 @@ export function DepositDialog({
     },
     enabled: isOpen,
   });
-  
+
   // Buscar configurações específicas de bônus (via endpoint público)
   const { data: bonusSettings = {} } = useQuery({
     queryKey: ["/api/bonus-settings"],
@@ -242,7 +245,7 @@ export function DepositDialog({
     },
     enabled: isOpen,
   });
-  
+
   // Console para debug das configurações de bônus
   console.log("Bonus settings (admin):", bonusSettings);
 
@@ -255,7 +258,7 @@ export function DepositDialog({
     },
     enabled: isOpen,
   });
-  
+
   // Determinar se o usuário é elegível para o bônus de primeiro depósito
   const isFirstDeposit = depositHistory.length === 0;
   console.log('Deposit history:', depositHistory.length === 0 ? 'Primeiro depósito' : `Já fez ${depositHistory.length} depósitos`);
@@ -264,62 +267,62 @@ export function DepositDialog({
     firstDepositBonusPercentage: systemSettings?.firstDepositBonusPercentage,
     firstDepositBonusMaxAmount: systemSettings?.firstDepositBonusMaxAmount
   });
-  
+
   console.log('Admin bonus settings:', {
     enabled: bonusSettings?.firstDepositBonus?.enabled,
     percentage: bonusSettings?.firstDepositBonus?.percentage,
     maxAmount: bonusSettings?.firstDepositBonus?.maxAmount
   });
-  
+
   // Função para calcular o valor do bônus com base no valor do depósito
   const calculateBonusAmount = (depositAmount: number) => {
     // Valores padrão de bônus para usar como fallback
     const DEFAULT_PERCENTAGE = 98; // 98% (novo valor)
     const DEFAULT_MAX_AMOUNT = 300; // R$ 300,00
-    
+
     // Verificar se o primeiro depósito está habilitado nas configurações do sistema
     const bonusEnabled = systemSettings?.firstDepositBonusEnabled !== false;
-    
+
     // Se o bônus não está habilitado, retornar zero
     if (!bonusEnabled) return 0;
-    
+
     // Forçar o valor de 98% para exibição até a correção no banco
     // Isso é um workaround temporário até que o valor seja atualizado
     // Anteriormente: Primeiro tentar obter valores das configurações de bônus do admin, etc.
     const percentage = 98; // Fixado temporariamente em 98%
-    
+
     // Manter valor máximo do bônus de R$300
     const maxAmount = DEFAULT_MAX_AMOUNT;
-    
-    console.log("Calculando bônus com valores finais:", { 
-      depositAmount, 
-      percentage, 
+
+    console.log("Calculando bônus com valores finais:", {
+      depositAmount,
+      percentage,
       maxAmount,
       enabled: bonusEnabled,
       fromAdmin: bonusSettings?.firstDepositBonus?.percentage !== undefined,
       fromSystem: systemSettings?.firstDepositBonusPercentage !== undefined,
       usingDefault: percentage === DEFAULT_PERCENTAGE || maxAmount === DEFAULT_MAX_AMOUNT
     });
-    
+
     // Se o depósito é zero, não há bônus
     if (depositAmount <= 0) return 0;
-    
+
     // Calcular o valor do bônus baseado na porcentagem
     const calculatedBonus = (depositAmount * percentage) / 100;
-    
+
     // Limitar ao valor máximo configurado
     return Math.min(calculatedBonus, maxAmount);
   };
-  
+
   // Estado para acompanhar o valor atual do depósito
   const [currentDepositValue, setCurrentDepositValue] = useState<number>(0);
-  
+
   // Calcular o bônus com base no valor atual do depósito
   const currentBonusAmount = calculateBonusAmount(currentDepositValue);
-  
+
   // Log para depuração
   console.log("Valor atual do depósito:", currentDepositValue, "Valor calculado do bônus:", currentBonusAmount);
-  
+
   // Efeito para monitorar mudanças no valor do depósito
   useEffect(() => {
     // Monitorar o campo de amount diretamente
@@ -328,16 +331,16 @@ export function DepositDialog({
       console.log("Valor de depósito atualizado:", amount);
       setCurrentDepositValue(amount || 0);
     };
-    
+
     // Observar os campos do formulário
     const subscription = form.watch(handleDepositChange);
-    
+
     // Inicializar com o valor atual
     handleDepositChange();
-    
+
     return () => subscription.unsubscribe();
   }, [form]);
-  
+
   // Determinar se o bônus deve ser exibido com base nas configurações do sistema
   // e no histórico de depósitos do usuário
   const bonusEnabled = systemSettings?.firstDepositBonusEnabled !== false && isFirstDeposit;
@@ -347,15 +350,15 @@ export function DepositDialog({
     mutationFn: async (data: { amount: number, gatewayId: number, useBonus?: boolean }) => {
       // Redirecionamos para o gateway específico com base no tipo selecionado
       const gateway = gateways.find(g => g.id === data.gatewayId);
-      
+
       if (gateway?.type === "pushinpay") {
         // Pushin Pay (PIX)
-        const res = await apiRequest("POST", "/api/payment/pushinpay", { 
+        const res = await apiRequest("POST", "/api/payment/pushinpay", {
           amount: data.amount,
           useBonus: data.useBonus
         });
         return await res.json();
-      // Código para Ezzebank removido
+        // Código para Ezzebank removido
       } else {
         throw new Error("Método de pagamento não suportado");
       }
@@ -365,25 +368,25 @@ export function DepositDialog({
         title: "Depósito iniciado",
         description: "Sua solicitação de depósito foi iniciada com sucesso.",
       });
-      
+
       // Guardar detalhes da transação e alterar o estado
       console.log("Payment response:", data);
       setTransactionDetail(data);
       setTransactionStatus('processing');
       form.reset();
-      
+
       // Iniciar polling para verificar status do pagamento
       startPolling(data.transactionId);
-      
+
       // Se houver uma URL externa, redirecionar (em produção)
       if (data.externalUrl) {
         window.open(data.externalUrl, "_blank");
       }
-      
+
       // Atualizar os dados do usuário
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payment-transactions"] });
-      
+
       // Chamar callback de sucesso se existir
       if (onSuccess) {
         onSuccess();
@@ -415,22 +418,22 @@ export function DepositDialog({
   // Handler para o envio do formulário
   const onSubmit = (values: DepositFormValues) => {
     setIsSubmitting(true);
-    
+
     // Garantir que o valor está no formato correto
     let amount = values.amount;
     console.log(`Valor original no formulário: ${amount}, tipo: ${typeof amount}`);
-    
+
     // Se não tivermos um valor, usar o valor parseado do campo de texto
     if (amount === undefined || amount === null) {
       amount = parseMoneyValue(depositAmount);
       console.log(`Usando valor do campo de texto: ${amount}`);
     }
-    
+
     // Garantir que é um número com 2 casas decimais
     const finalAmount = parseFloat(Number(amount).toFixed(2));
-    
+
     console.log(`Valor final enviado para API: ${finalAmount}, tipo: ${typeof finalAmount}`);
-    
+
     depositMutation.mutate({
       amount: finalAmount,
       gatewayId: parseInt(values.gatewayId),
@@ -473,7 +476,7 @@ export function DepositDialog({
     setDepositAmount(newValue);
     const parsedAmount = parseMoneyValue(newValue);
     form.setValue("amount", parsedAmount);
-    
+
     // Atualizar o valor de depósito no estado para recalcular o bônus
     setCurrentDepositValue(parsedAmount);
   };
@@ -481,10 +484,10 @@ export function DepositDialog({
   // Converter string de valor para número (considerando formato brasileiro)
   const parseMoneyValue = (value: string): number => {
     if (!value) return 0;
-    
+
     // Limpar formatação, manter apenas números e vírgula
     const cleanValue = value.replace(/[^\d,]/g, "");
-    
+
     // Verificar se o valor tem vírgula
     if (cleanValue.includes(",")) {
       // Se tiver vírgula, converter de formato brasileiro para número
@@ -492,7 +495,7 @@ export function DepositDialog({
       const intPart = parts[0] || "0";
       // Garantir que a parte decimal tenha o tamanho correto
       const decPart = parts.length > 1 ? parts[1].substring(0, 2).padEnd(2, '0') : "00";
-      
+
       // Montar o número com a formatação correta para parseFloat
       const result = parseFloat(`${intPart}.${decPart}`);
       console.log(`Convertendo ${value} (limpo: ${cleanValue}) para número: ${result}`);
@@ -515,7 +518,7 @@ export function DepositDialog({
         </div>
       );
     }
-    
+
     // Sem métodos de pagamento disponíveis
     if (gateways.length === 0) {
       return (
@@ -528,19 +531,19 @@ export function DepositDialog({
         </Alert>
       );
     }
-    
+
     // Status de processamento - aguardando confirmação
     if (transactionStatus === 'processing') {
       // Verificar se há uma transação relacionada no histórico
-      const currentTransaction = transactionDetail ? 
+      const currentTransaction = transactionDetail ?
         paymentTransactions.find((t: any) => t.id === transactionDetail.transactionId) : null;
-      
+
       // Se a transação foi concluída, mostrar tela de sucesso
       if (currentTransaction && currentTransaction.status === 'completed') {
         setTransactionStatus('success');
         return null; // Será redirecionado para a tela de sucesso na próxima renderização
       }
-      
+
       return (
         <div className="flex flex-col items-center justify-center py-4 space-y-4">
           <Card className="w-full">
@@ -564,11 +567,11 @@ export function DepositDialog({
                     {transactionDetail?.paymentDetails?.qr_code_base64 ? (
                       <>
                         <div className="border p-2 rounded-md bg-white">
-                          <img 
-                            src={transactionDetail.paymentDetails.qr_code_base64.startsWith('data:') 
-                              ? transactionDetail.paymentDetails.qr_code_base64 
+                          <img
+                            src={transactionDetail.paymentDetails.qr_code_base64.startsWith('data:')
+                              ? transactionDetail.paymentDetails.qr_code_base64
                               : `data:image/png;base64,${transactionDetail.paymentDetails.qr_code_base64}`}
-                            alt="QR Code PIX" 
+                            alt="QR Code PIX"
                             className="w-48 h-48"
                           />
                         </div>
@@ -579,11 +582,11 @@ export function DepositDialog({
                     ) : transactionDetail?.qrCodeUrl ? (
                       <>
                         <div className="border p-2 rounded-md bg-white">
-                          <img 
-                            src={transactionDetail.qrCodeUrl.startsWith('data:') 
-                              ? transactionDetail.qrCodeUrl 
-                              : `data:image/png;base64,${transactionDetail.qrCodeUrl.replace('data:image/png;base64,', '')}`} 
-                            alt="QR Code PIX" 
+                          <img
+                            src={transactionDetail.qrCodeUrl.startsWith('data:')
+                              ? transactionDetail.qrCodeUrl
+                              : `data:image/png;base64,${transactionDetail.qrCodeUrl.replace('data:image/png;base64,', '')}`}
+                            alt="QR Code PIX"
                             className="w-48 h-48"
                           />
                         </div>
@@ -629,13 +632,13 @@ export function DepositDialog({
                   </div>
                 </TabsContent>
               </Tabs>
-              
+
               <div className="mt-6 grid grid-cols-2 gap-2 text-sm">
                 <div className="text-muted-foreground">Valor:</div>
                 <div className="text-right font-medium">
-                  {new Intl.NumberFormat('pt-BR', { 
-                    style: 'currency', 
-                    currency: 'BRL' 
+                  {new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
                   }).format(transactionDetail?.amount || 0)}
                 </div>
                 <div className="text-muted-foreground">Expira em:</div>
@@ -645,29 +648,29 @@ export function DepositDialog({
                 </div>
                 <div className="text-muted-foreground">Status:</div>
                 <div className="text-right font-medium">
-                  {currentTransaction?.status === 'pending' ? 'Pendente' : 
-                  currentTransaction?.status === 'processing' ? 'Processando' : 
-                  currentTransaction?.status === 'failed' ? 'Falhou' : 'Aguardando'}
+                  {currentTransaction?.status === 'pending' ? 'Pendente' :
+                    currentTransaction?.status === 'processing' ? 'Processando' :
+                      currentTransaction?.status === 'failed' ? 'Falhou' : 'Aguardando'}
                 </div>
               </div>
             </CardContent>
           </Card>
-          
+
           <div className="text-sm text-muted-foreground text-center px-4">
             Após realizar o pagamento, aguarde alguns instantes para a confirmação.
             Esta tela atualizará automaticamente quando o pagamento for processado.
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-2 mt-4 w-full justify-center">
-            <Button 
+            <Button
               variant="outline"
               onClick={() => window.open(transactionDetail?.qrCodeUrl, "_blank")}
             >
               <ExternalLink className="h-4 w-4 mr-2" />
               Abrir QR Code
             </Button>
-            
-            <Button 
+
+            <Button
               variant="ghost"
               onClick={() => {
                 setTransactionStatus('idle');
@@ -681,7 +684,7 @@ export function DepositDialog({
         </div>
       );
     }
-    
+
     // Status de erro ao processar o pagamento
     if (transactionStatus === 'error') {
       return (
@@ -706,7 +709,7 @@ export function DepositDialog({
               </Alert>
             </CardContent>
             <CardFooter>
-              <Button 
+              <Button
                 className="w-full"
                 onClick={() => {
                   setTransactionStatus('idle');
@@ -720,7 +723,7 @@ export function DepositDialog({
         </div>
       );
     }
-    
+
     // Status de sucesso após confirmação
     if (transactionStatus === 'success') {
       return (
@@ -739,9 +742,9 @@ export function DepositDialog({
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="text-muted-foreground">Valor:</div>
                 <div className="text-right font-medium">
-                  {new Intl.NumberFormat('pt-BR', { 
-                    style: 'currency', 
-                    currency: 'BRL' 
+                  {new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
                   }).format(transactionDetail?.amount || 0)}
                 </div>
                 <div className="text-muted-foreground">Data:</div>
@@ -755,7 +758,7 @@ export function DepositDialog({
               </div>
             </CardContent>
             <CardFooter>
-              <Button 
+              <Button
                 className="w-full"
                 onClick={() => {
                   setIsOpen(false);
@@ -770,7 +773,7 @@ export function DepositDialog({
         </div>
       );
     }
-    
+
     // Formulário para realizar novo depósito (estado padrão 'idle')
     return (
       <Form {...form}>
@@ -795,7 +798,7 @@ export function DepositDialog({
                     className="text-2xl font-bold text-center"
                   />
                 </FormControl>
-                
+
                 {/* Valores pré-definidos para seleção rápida */}
                 <div className="grid grid-cols-4 gap-2 mt-3">
                   {[10, 30, 50, 100].map((value) => (
@@ -815,7 +818,7 @@ export function DepositDialog({
                     </Button>
                   ))}
                 </div>
-                
+
                 <FormMessage />
               </FormItem>
             )}
@@ -862,7 +865,7 @@ export function DepositDialog({
               </FormItem>
             )}
           />
-          
+
           {/* Opção de bônus de primeiro depósito - só aparece se for elegível */}
           {bonusEnabled && (
             <FormField
@@ -881,12 +884,12 @@ export function DepositDialog({
                       Ativar Bônus de Primeiro Depósito
                     </FormLabel>
                   </div>
-                  
+
                   <FormDescription className="pl-6">
                     Receba <span className="font-bold text-primary">98%</span> de bônus até{" "}
                     <span className="font-bold text-primary">R$ 300,00</span>
                   </FormDescription>
-                  
+
                   {/* Valor calculado do bônus em destaque */}
                   <div className="mt-1 pl-6">
                     <div className="font-medium">
@@ -932,29 +935,29 @@ export function DepositDialog({
   if (renderAsButton) {
     return (
       <>
-        <Button 
-          variant={buttonVariant} 
+        <Button
+          variant={buttonVariant}
           className="gap-2"
           onClick={() => setIsOpen(true)}
         >
           <CreditCard className="h-4 w-4" />
           {buttonText}
         </Button>
-        
+
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>
                 {transactionStatus === 'processing' ? 'Status do Pagamento' :
-                 transactionStatus === 'success' ? 'Pagamento Confirmado' :
-                 transactionStatus === 'error' ? 'Erro no Pagamento' :
-                 'Realizar Depósito'}
+                  transactionStatus === 'success' ? 'Pagamento Confirmado' :
+                    transactionStatus === 'error' ? 'Erro no Pagamento' :
+                      'Realizar Depósito'}
               </DialogTitle>
               <DialogDescription>
                 {transactionStatus === 'processing' ? 'Acompanhe o status do seu pagamento.' :
-                 transactionStatus === 'success' ? 'Seu pagamento foi processado com sucesso!' :
-                 transactionStatus === 'error' ? 'Houve um problema com seu pagamento.' :
-                 'Escolha o valor e o método de pagamento para fazer um depósito.'}
+                  transactionStatus === 'success' ? 'Seu pagamento foi processado com sucesso!' :
+                    transactionStatus === 'error' ? 'Houve um problema com seu pagamento.' :
+                      'Escolha o valor e o método de pagamento para fazer um depósito.'}
               </DialogDescription>
             </DialogHeader>
             {renderContent()}
@@ -967,29 +970,31 @@ export function DepositDialog({
   // Caso padrão com botão trigger
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button 
-          ref={triggerRef} 
-          variant={buttonVariant}
-          className="gap-2"
-        >
-          <CreditCard className="h-4 w-4" />
-          {buttonText}
-        </Button>
-      </DialogTrigger>
+      {!noTrigger && (
+        <DialogTrigger asChild>
+          <Button
+            ref={triggerRef}
+            variant={buttonVariant}
+            className="gap-2"
+          >
+            <CreditCard className="h-4 w-4" />
+            {buttonText}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>
             {transactionStatus === 'processing' ? 'Status do Pagamento' :
-             transactionStatus === 'success' ? 'Pagamento Confirmado' :
-             transactionStatus === 'error' ? 'Erro no Pagamento' :
-             'Realizar Depósito'}
+              transactionStatus === 'success' ? 'Pagamento Confirmado' :
+                transactionStatus === 'error' ? 'Erro no Pagamento' :
+                  'Realizar Depósito'}
           </DialogTitle>
           <DialogDescription>
             {transactionStatus === 'processing' ? 'Acompanhe o status do seu pagamento.' :
-             transactionStatus === 'success' ? 'Seu pagamento foi processado com sucesso!' :
-             transactionStatus === 'error' ? 'Houve um problema com seu pagamento.' :
-             'Escolha o valor e o método de pagamento para fazer um depósito.'}
+              transactionStatus === 'success' ? 'Seu pagamento foi processado com sucesso!' :
+                transactionStatus === 'error' ? 'Houve um problema com seu pagamento.' :
+                  'Escolha o valor e o método de pagamento para fazer um depósito.'}
           </DialogDescription>
         </DialogHeader>
 

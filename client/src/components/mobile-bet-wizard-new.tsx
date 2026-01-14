@@ -1354,6 +1354,7 @@ export function MobileBetWizardNew({
           open={showDepositDialog}
           onOpenChange={setShowDepositDialog}
           renderAsButton={false}
+          noTrigger={true}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["/api/user"] });
 
@@ -1488,6 +1489,7 @@ export function MobileBetWizardNew({
       <DepositDialog
         open={showDepositDialog}
         onOpenChange={setShowDepositDialog}
+        noTrigger={true}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["/api/user"] });
 
