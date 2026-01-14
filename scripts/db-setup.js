@@ -2,20 +2,8 @@ import pg from 'pg';
 import crypto from 'crypto';
 import util from 'util';
 
-const { Pool } = pg;
-
 // Otimização para produção DigitalOcean
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-    checkServerIdentity: () => undefined
-  },
-  max: 5,
-  connectionTimeoutMillis: 10000,
-});
 
 async function hashPassword(password) {
   const scryptAsync = util.promisify(crypto.scrypt);
@@ -26,24 +14,42 @@ async function hashPassword(password) {
 
 async function setup() {
   console.log('🚀 Iniciando configuração do banco de dados...');
+  let pool;
+
   try {
     const dbUrl = process.env.DATABASE_URL;
-    if (dbUrl) {
-      if (dbUrl.includes('${')) {
-        console.log('⚠️ ALERTA: DATABASE_URL parece conter um template não processado:', dbUrl);
-      } else {
-        try {
-          const url = new URL(dbUrl);
-          console.log('🔌 Conectando ao host:', url.hostname);
-        } catch (e) {
-          console.log('⚠️ DATABASE_URL não é uma URL válida. Valor atual:', dbUrl);
-        }
-      }
-    } else {
-      console.log('⚠️ DATABASE_URL não definida.');
+    if (!dbUrl) {
+      console.log('⚠️ DATABASE_URL não definida. Pulando configuração do banco.');
+      return;
+    }
+
+    if (dbUrl.includes('${')) {
+      console.log('⚠️ ALERTA: DATABASE_URL parece conter um template não processado:', dbUrl);
+      console.log('👉 Verifique se o nome do banco no painel da DigitalOcean coincide com o que está na variável.');
+      console.log('👉 Exemplo: Se o banco se chama "db", a variável deve ser ${db.DATABASE_URL}');
+      return;
+    }
+
+    try {
+      const url = new URL(dbUrl);
+      console.log('🔌 Conectando ao host:', url.hostname);
+
+      pool = new pg.Pool({
+        connectionString: dbUrl,
+        ssl: {
+          rejectUnauthorized: false,
+          checkServerIdentity: () => undefined
+        },
+        max: 5,
+        connectionTimeoutMillis: 10000,
+      });
+    } catch (e) {
+      console.log('⚠️ DATABASE_URL não é uma URL válida. Valor atual:', dbUrl);
+      return;
     }
   } catch (err) {
     console.error('❌ Erro ao ler variáveis de ambiente:', err);
+    return;
   }
 
   try {
