@@ -4,11 +4,17 @@ import util from 'util';
 
 const { Pool } = pg;
 
+// Otimização para produção DigitalOcean
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('localhost') || process.env.DATABASE_URL?.includes('@db:')
-    ? false
-    : { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false,
+    checkServerIdentity: () => undefined
+  },
+  max: 5,
+  connectionTimeoutMillis: 10000,
 });
 
 async function hashPassword(password) {
@@ -20,11 +26,12 @@ async function hashPassword(password) {
 
 async function setup() {
   console.log('🚀 Iniciando configuração do banco de dados...');
+  console.log('🔌 Conectando ao host:', process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : 'N/A');
 
   try {
     // 1. Criar tabelas (Baseado no migrate-db.js)
     console.log('Step 1: Criando tabelas...');
-    
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -135,7 +142,7 @@ async function setup() {
     // Configurações
     const settingsCheck = await pool.query('SELECT count(*) FROM system_settings');
     if (parseInt(settingsCheck.rows[0].count) === 0) {
-       await pool.query('INSERT INTO system_settings (id) VALUES (1)');
+      await pool.query('INSERT INTO system_settings (id) VALUES (1)');
     }
 
     console.log('✅ Configuração finalizada com sucesso!');
