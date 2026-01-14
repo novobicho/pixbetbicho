@@ -72,13 +72,9 @@ export default function HomePage() {
       {/* Bottom Banner */}
       <BottomBannerSection />
 
-      import {MobileBetWizardNew} from "@/components/mobile-bet-wizard-new";
-
-      // ... (existing imports)
-
-      // ... inside HomePage component ...
 
       {/* Floating Action Button for Betting (Mobile/Desktop) */}
+
       <div className="fixed bottom-6 right-6 z-50">
         <Dialog open={bettingModalOpen} onOpenChange={setBettingModalOpen}>
           <DialogTrigger asChild>
