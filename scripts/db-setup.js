@@ -26,7 +26,25 @@ async function hashPassword(password) {
 
 async function setup() {
   console.log('🚀 Iniciando configuração do banco de dados...');
-  console.log('🔌 Conectando ao host:', process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : 'N/A');
+  try {
+    const dbUrl = process.env.DATABASE_URL;
+    if (dbUrl) {
+      if (dbUrl.includes('${')) {
+        console.log('⚠️ ALERTA: DATABASE_URL parece conter um template não processado:', dbUrl);
+      } else {
+        try {
+          const url = new URL(dbUrl);
+          console.log('🔌 Conectando ao host:', url.hostname);
+        } catch (e) {
+          console.log('⚠️ DATABASE_URL não é uma URL válida. Valor atual:', dbUrl);
+        }
+      }
+    } else {
+      console.log('⚠️ DATABASE_URL não definida.');
+    }
+  } catch (err) {
+    console.error('❌ Erro ao ler variáveis de ambiente:', err);
+  }
 
   try {
     // 1. Criar tabelas (Baseado no migrate-db.js)
