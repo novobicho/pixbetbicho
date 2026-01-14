@@ -345,13 +345,54 @@ async function setup() {
       console.log('⚠️ Usuário ADMIN criado: admin / admin123');
     }
 
-    // Configurações
-    const settingsCheck = await pool.query('SELECT count(*) FROM system_settings');
-    if (parseInt(settingsCheck.rows[0].count) === 0) {
-      await pool.query('INSERT INTO system_settings (id) VALUES (1)');
-    }
+    // 3. Migrações de Colunas (Garantir que tabelas antigas tenham as novas colunas)
+    console.log('Step 3: Executando migrações de colunas...');
 
-    console.log('✅ Configuração finalizada com sucesso!');
+    const addColumnIfNotExists = async (table, column, type, defaultValue = null) => {
+      const checkResult = await pool.query(`
+        SELECT COUNT(*) FROM information_schema.columns 
+        WHERE table_name = $1 AND column_name = $2
+      `, [table, column]);
+
+      if (parseInt(checkResult.rows[0].count) === 0) {
+        console.log(`  ➕ Adicionando coluna ${column} à tabela ${table}...`);
+        const query = `ALTER TABLE ${table} ADD COLUMN ${column} ${type}${defaultValue !== null ? ` DEFAULT ${defaultValue}` : ''}`;
+        await pool.query(query);
+      }
+    };
+
+    // Migrações Draws (Suporte a 10 prêmios)
+    await addColumnIfNotExists('draws', 'result_animal_id_6', 'INTEGER');
+    await addColumnIfNotExists('draws', 'result_animal_id_7', 'INTEGER');
+    await addColumnIfNotExists('draws', 'result_animal_id_8', 'INTEGER');
+    await addColumnIfNotExists('draws', 'result_animal_id_9', 'INTEGER');
+    await addColumnIfNotExists('draws', 'result_animal_id_10', 'INTEGER');
+    await addColumnIfNotExists('draws', 'result_number_6', 'TEXT');
+    await addColumnIfNotExists('draws', 'result_number_7', 'TEXT');
+    await addColumnIfNotExists('draws', 'result_number_8', 'TEXT');
+    await addColumnIfNotExists('draws', 'result_number_9', 'TEXT');
+    await addColumnIfNotExists('draws', 'result_number_10', 'TEXT');
+
+    // Migrações Bets
+    await addColumnIfNotExists('bets', 'use_bonus_balance', 'BOOLEAN', 'false');
+    await addColumnIfNotExists('bets', 'premio_type', 'TEXT', "'1'");
+
+    // Migrações Users
+    await addColumnIfNotExists('users', 'blocked', 'BOOLEAN', 'false');
+    await addColumnIfNotExists('users', 'block_reason', 'TEXT');
+
+    // Migrações System Settings
+    await addColumnIfNotExists('system_settings', 'site_name', 'TEXT', "'Jogo do Bicho'");
+    await addColumnIfNotExists('system_settings', 'site_description', 'TEXT', "'A melhor plataforma de apostas online'");
+    await addColumnIfNotExists('system_settings', 'logo_url', 'TEXT', "'/img/logo.png'");
+    await addColumnIfNotExists('system_settings', 'favicon_url', 'TEXT', "'/img/favicon.png'");
+    await addColumnIfNotExists('system_settings', 'signup_bonus_enabled', 'BOOLEAN', 'false');
+    await addColumnIfNotExists('system_settings', 'signup_bonus_amount', 'REAL', '10');
+    await addColumnIfNotExists('system_settings', 'first_deposit_bonus_enabled', 'BOOLEAN', 'false');
+    await addColumnIfNotExists('system_settings', 'first_deposit_bonus_amount', 'REAL', '100');
+    await addColumnIfNotExists('system_settings', 'promotional_banners_enabled', 'BOOLEAN', 'false');
+
+    console.log('✅ Configuração e migrações finalizadas com sucesso!');
   } catch (error) {
     console.error('❌ Erro na configuração:', error);
     process.exit(1);
