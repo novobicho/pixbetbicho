@@ -65,7 +65,7 @@ async function setup() {
         name TEXT,
         balance REAL DEFAULT 0 NOT NULL,
         is_admin BOOLEAN DEFAULT false NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
         blocked BOOLEAN DEFAULT false NOT NULL,
         block_reason TEXT
       );
@@ -74,9 +74,9 @@ async function setup() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS animals (
         id SERIAL PRIMARY KEY,
-        "group" INTEGER NOT NULL,
+        "group" INTEGER NOT NULL UNIQUE,
         name TEXT NOT NULL,
-        numbers TEXT NOT NULL
+        numbers TEXT[] NOT NULL
       );
     `);
 
@@ -88,7 +88,72 @@ async function setup() {
         odds INTEGER NOT NULL,
         active BOOLEAN DEFAULT true NOT NULL,
         sort_order INTEGER,
-        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS draw_templates (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        time TEXT NOT NULL,
+        days_of_week INTEGER[] NOT NULL,
+        active BOOLEAN DEFAULT true NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS draws (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        time TEXT NOT NULL,
+        date TIMESTAMP WITH TIME ZONE NOT NULL,
+        status TEXT DEFAULT 'pending' NOT NULL,
+        result_animal_id INTEGER,
+        result_animal_id_2 INTEGER,
+        result_animal_id_3 INTEGER,
+        result_animal_id_4 INTEGER,
+        result_animal_id_5 INTEGER,
+        result_animal_id_6 INTEGER,
+        result_animal_id_7 INTEGER,
+        result_animal_id_8 INTEGER,
+        result_animal_id_9 INTEGER,
+        result_animal_id_10 INTEGER,
+        result_number_1 TEXT,
+        result_number_2 TEXT,
+        result_number_3 TEXT,
+        result_number_4 TEXT,
+        result_number_5 TEXT,
+        result_number_6 TEXT,
+        result_number_7 TEXT,
+        result_number_8 TEXT,
+        result_number_9 TEXT,
+        result_number_10 TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        animal_id INTEGER REFERENCES animals(id),
+        animal_id_2 INTEGER REFERENCES animals(id),
+        animal_id_3 INTEGER REFERENCES animals(id),
+        animal_id_4 INTEGER REFERENCES animals(id),
+        animal_id_5 INTEGER REFERENCES animals(id),
+        amount REAL NOT NULL,
+        type TEXT NOT NULL,
+        draw_id INTEGER NOT NULL REFERENCES draws(id),
+        status TEXT DEFAULT 'pending' NOT NULL,
+        win_amount REAL,
+        game_mode_id INTEGER REFERENCES game_modes(id),
+        potential_win_amount REAL,
+        bet_numbers TEXT[],
+        premio_type TEXT DEFAULT '1',
+        use_bonus_balance BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
       );
     `);
 
@@ -97,8 +162,8 @@ async function setup() {
         id SERIAL PRIMARY KEY,
         max_bet_amount REAL DEFAULT 10000 NOT NULL,
         max_payout REAL DEFAULT 1000000 NOT NULL,
-        min_bet_amount REAL DEFAULT 50 NOT NULL,
-        default_bet_amount REAL DEFAULT 200 NOT NULL,
+        min_bet_amount REAL DEFAULT 5 NOT NULL,
+        default_bet_amount REAL DEFAULT 20 NOT NULL,
         main_color TEXT DEFAULT '#035faf' NOT NULL,
         secondary_color TEXT DEFAULT '#b0d525' NOT NULL,
         accent_color TEXT DEFAULT '#b0d524' NOT NULL,
@@ -108,10 +173,121 @@ async function setup() {
         maintenance_mode BOOLEAN DEFAULT false NOT NULL,
         auto_approve_withdrawals BOOLEAN DEFAULT true NOT NULL,
         auto_approve_withdrawal_limit REAL DEFAULT 30 NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+        site_name TEXT DEFAULT 'Jogo do Bicho' NOT NULL,
+        site_description TEXT DEFAULT 'A melhor plataforma de apostas online' NOT NULL,
+        logo_url TEXT DEFAULT '/img/logo.png' NOT NULL,
+        favicon_url TEXT DEFAULT '/img/favicon.png' NOT NULL,
+        signup_bonus_enabled BOOLEAN DEFAULT false NOT NULL,
+        signup_bonus_amount REAL DEFAULT 10 NOT NULL,
+        signup_bonus_rollover REAL DEFAULT 3 NOT NULL,
+        signup_bonus_expiration INTEGER DEFAULT 7 NOT NULL,
+        first_deposit_bonus_enabled BOOLEAN DEFAULT false NOT NULL,
+        first_deposit_bonus_amount REAL DEFAULT 100 NOT NULL,
+        first_deposit_bonus_rollover REAL DEFAULT 3 NOT NULL,
+        first_deposit_bonus_expiration INTEGER DEFAULT 7 NOT NULL,
+        first_deposit_bonus_percentage REAL DEFAULT 100 NOT NULL,
+        first_deposit_bonus_max_amount REAL DEFAULT 200 NOT NULL,
+        promotional_banners_enabled BOOLEAN DEFAULT false NOT NULL,
+        banner_desktop_url TEXT DEFAULT '/img/banner-desktop.jpg',
+        banner_mobile_url TEXT DEFAULT '/img/banner-mobile.jpg',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
       );
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS payment_gateways (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT false NOT NULL,
+        api_key TEXT,
+        secret_key TEXT,
+        sandbox BOOLEAN DEFAULT true NOT NULL,
+        config JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS payment_transactions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        gateway_id INTEGER NOT NULL REFERENCES payment_gateways(id),
+        amount REAL NOT NULL,
+        status TEXT DEFAULT 'pending' NOT NULL,
+        type TEXT DEFAULT 'deposit' NOT NULL,
+        external_id TEXT,
+        external_url TEXT,
+        gateway_response JSONB,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS withdrawals (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        amount REAL NOT NULL,
+        status TEXT DEFAULT 'pending' NOT NULL,
+        pix_key TEXT NOT NULL,
+        pix_key_type TEXT NOT NULL,
+        account_info TEXT,
+        requested_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        processed_at TIMESTAMP WITH TIME ZONE,
+        processed_by INTEGER REFERENCES users(id),
+        rejection_reason TEXT,
+        notes TEXT
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        description TEXT,
+        related_id INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_bonuses (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type TEXT NOT NULL,
+        amount REAL NOT NULL,
+        remaining_amount REAL NOT NULL,
+        rollover_amount REAL NOT NULL,
+        rolled_amount REAL DEFAULT 0 NOT NULL,
+        status TEXT DEFAULT 'active' NOT NULL,
+        expires_at TIMESTAMP WITH TIME ZONE,
+        completed_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        related_transaction_id INTEGER
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS promotional_banners (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        image_url TEXT NOT NULL,
+        link_url TEXT,
+        start_date TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+        end_date TIMESTAMP WITH TIME ZONE,
+        is_login_banner BOOLEAN DEFAULT false NOT NULL,
+        is_enabled BOOLEAN DEFAULT true NOT NULL,
+        display_order INTEGER DEFAULT 0 NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+
 
     // 2. Popular dados se estiver vazio
     console.log('Step 2: Verificando dados iniciais...');
@@ -132,7 +308,9 @@ async function setup() {
         [25, 'Vaca', '97,98,99,00']
       ];
       for (const a of animals) {
-        await pool.query('INSERT INTO animals ("group", name, numbers) VALUES ($1, $2, $3)', a);
+        // Converter string de números (01,02,03,04) para array de strings para compatibilidade com TEXT[]
+        const animalData = [a[0], a[1], a[2].split(',')];
+        await pool.query('INSERT INTO animals ("group", name, numbers) VALUES ($1, $2, $3)', animalData);
       }
     }
 
@@ -141,10 +319,14 @@ async function setup() {
     if (parseInt(modesCheck.rows[0].count) === 0) {
       console.log('Populando modos de jogo...');
       const modes = [
-        ['Grupo', 'Aposta no grupo do animal', 18, 1],
-        ['Centena', 'Três últimos dígitos', 900, 2],
-        ['Dezena', 'Dois últimos dígitos', 90, 3],
-        ['Milhar', 'Quatro dígitos completo', 9000, 4]
+        ['Grupo', 'Aposta no grupo do animal', 2100, 1],
+        ['Centena', 'Três últimos dígitos', 80000, 2],
+        ['Dezena', 'Dois últimos dígitos', 8400, 3],
+        ['Milhar', 'Quatro dígitos completo', 800000, 4],
+        ['Duque de Grupo', 'Dois grupos', 2000, 5],
+        ['Terno de Grupo', 'Três grupos', 15000, 6],
+        ['Duque de Dezena', 'Duas dezenas', 30000, 7],
+        ['Terno de Dezena', 'Três dezenas', 600000, 8]
       ];
       for (const m of modes) {
         await pool.query('INSERT INTO game_modes (name, description, odds, sort_order) VALUES ($1, $2, $3, $4)', m);
