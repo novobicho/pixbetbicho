@@ -20,6 +20,26 @@ export interface ScrapedResult {
 export class ResultScraper {
     private baseUrl = 'https://www.resultadofacil.com.br/resultado-do-jogo-do-bicho';
 
+    private async getCookies(baseUrl: string): Promise<string[]> {
+        try {
+            console.log(`[ResultScraper] 🕒 Obtendo cookies iniciais de: ${baseUrl}`);
+            const response = await fetch(baseUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                },
+                signal: AbortSignal.timeout(5000)
+            });
+            const cookies = response.headers.getSetCookie();
+            console.log(`[ResultScraper] 🍪 Cookies encontrados: ${cookies.length}`);
+            return cookies;
+        } catch (error) {
+            console.error(`[ResultScraper] ⚠️ Erro ao obter cookies:`, error);
+            return [];
+        }
+    }
+
     async fetchResult(drawName: string, drawDate?: Date): Promise<ScrapedResult | null> {
         try {
             if (!drawDate) {
@@ -27,9 +47,12 @@ export class ResultScraper {
                 return null;
             }
 
-            // Determinar a URL baseada no estado presente no nome do sorteio
             const suffix = this.getStateSuffix(drawName);
             const url = this.baseUrl + suffix;
+
+            // Passo 1: Obter cookies da home para parecer um usuário real
+            const sessionCookies = await this.getCookies(this.baseUrl);
+            const cookieHeader = sessionCookies.length > 0 ? sessionCookies.join('; ') : '';
 
             console.log(`[ResultScraper] 🌐 Buscando em: ${url} para o sorteio: "${drawName}"`);
 
@@ -43,10 +66,14 @@ export class ResultScraper {
                     'Upgrade-Insecure-Requests': '1',
                     'Sec-Fetch-Dest': 'document',
                     'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-Site': 'same-origin',
                     'Sec-Fetch-User': '?1',
                     'Cache-Control': 'max-age=0',
-                    'Referer': 'https://www.google.com/',
+                    'Referer': this.baseUrl,
+                    ...(cookieHeader ? { 'Cookie': cookieHeader } : {}),
+                    'Sec-CH-UA': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                    'Sec-CH-UA-Mobile': '?0',
+                    'Sec-CH-UA-Platform': '"Windows"',
                 },
                 // Adicionando timeout para segurança
                 signal: AbortSignal.timeout(10000)
@@ -58,6 +85,24 @@ export class ResultScraper {
                 console.error(`[ResultScraper] ❌ Erro HTTP ${response.status}`);
                 const errorText = await response.text().catch(() => 'Não foi possível ler o corpo do erro');
                 console.log(`[ResultScraper] 📝 Conteúdo do erro (primeiros 200 chars): ${errorText.substring(0, 200)}`);
+
+                // Tentativa de fallback sem o prefixo www ou em modo simples se falhar
+                if (response.status === 403) {
+                    console.log('[ResultScraper] 🔄 Tentando uma última vez com URL alternativa...');
+                    const fallbackUrl = url.replace('www.', '');
+                    try {
+                        const fallbackResponse = await fetch(fallbackUrl, {
+                            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36' },
+                            signal: AbortSignal.timeout(5000)
+                        });
+                        if (fallbackResponse.ok) {
+                            const html = await fallbackResponse.text();
+                            return this.parseResult(html, drawName, drawDate);
+                        }
+                    } catch (e) {
+                        console.error('[ResultScraper] ❌ Falha no fallback:', e);
+                    }
+                }
                 return null;
             }
 
