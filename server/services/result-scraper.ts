@@ -40,6 +40,10 @@ export class ResultScraper {
         }
     }
 
+    private sleep(ms: number) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     async fetchResult(drawName: string, drawDate?: Date): Promise<ScrapedResult | null> {
         try {
             if (!drawDate) {
@@ -53,6 +57,10 @@ export class ResultScraper {
             // Passo 1: Obter cookies da home para parecer um usuário real
             const sessionCookies = await this.getCookies(this.baseUrl);
             const cookieHeader = sessionCookies.length > 0 ? sessionCookies.join('; ') : '';
+
+            // Passo 2: DELAY HUMANO (Essencial para driblar firewalls que medem velocidade)
+            console.log(`[ResultScraper] 🕒 Esperando 2.5s para simular clique humano...`);
+            await this.sleep(2500);
 
             console.log(`[ResultScraper] 🌐 Buscando em: ${url} para o sorteio: "${drawName}"`);
 
@@ -86,21 +94,29 @@ export class ResultScraper {
                 const errorText = await response.text().catch(() => 'Não foi possível ler o corpo do erro');
                 console.log(`[ResultScraper] 📝 Conteúdo do erro (primeiros 200 chars): ${errorText.substring(0, 200)}`);
 
-                // Tentativa de fallback sem o prefixo www ou em modo simples se falhar
+                // Passo 3: TENTATIVA VIA MOBILE DOMAIN (m.resultadofacil.com.br)
                 if (response.status === 403) {
-                    console.log('[ResultScraper] 🔄 Tentando uma última vez com URL alternativa...');
-                    const fallbackUrl = url.replace('www.', '');
+                    console.log('[ResultScraper] 🔄 Bloqueado no principal. Tentando via MOBILE (m.resultadofacil.com.br)...');
+                    const mobileUrl = url.replace('www.', 'm.').replace('https://', 'http://'); // Tenta HTTP simples no mobile no fallback
                     try {
-                        const fallbackResponse = await fetch(fallbackUrl, {
-                            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36' },
-                            signal: AbortSignal.timeout(5000)
+                        await this.sleep(1500); // Mais um pequeno delay
+                        const mobileResponse = await fetch(mobileUrl, {
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                                'Referer': 'https://www.google.com/'
+                            },
+                            signal: AbortSignal.timeout(10000)
                         });
-                        if (fallbackResponse.ok) {
-                            const html = await fallbackResponse.text();
+
+                        console.log(`[ResultScraper] 📡 Status Mobile: ${mobileResponse.status}`);
+                        if (mobileResponse.ok) {
+                            const html = await mobileResponse.text();
+                            console.log(`[ResultScraper] ✅ Sucesso via Mobile! (${html.length} bytes)`);
                             return this.parseResult(html, drawName, drawDate);
                         }
                     } catch (e) {
-                        console.error('[ResultScraper] ❌ Falha no fallback:', e);
+                        console.error('[ResultScraper] ❌ Falha no fallback mobile:', e);
                     }
                 }
                 return null;
