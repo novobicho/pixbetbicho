@@ -312,6 +312,7 @@ export const systemSettings = pgTable("system_settings", {
   promotionalBannersEnabled: boolean("promotional_banners_enabled").default(false).notNull(),
   bannerDesktopUrl: text("banner_desktop_url").default("/img/banner-desktop.jpg"),
   bannerMobileUrl: text("banner_mobile_url").default("/img/banner-mobile.jpg"),
+  bannerDashboardUrl: text("banner_dashboard_url").default("/img/banner-dashboard.jpg"),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -354,9 +355,12 @@ export type SystemSettings = {
   promotionalBannersEnabled: boolean;
   bannerDesktopUrl?: string;
   bannerMobileUrl?: string;
+  bannerDashboardUrl?: string;
 
   // Configurações de apostas com bônus
   allowBonusBets: boolean;
+  signupBonusBannerEnabled?: boolean;
+  firstDepositBonusBannerEnabled?: boolean;
 };
 
 // Payment Gateway Types
