@@ -88,13 +88,13 @@ async function startMainServer(server: http.Server) {
       const cron = await import("node-cron");
       const { autoUpdateService } = await import("./services/auto-update-results");
 
-      // Executar a cada 30 minutos durante horário de extrações (9h às 23h)
-      cron.default.schedule('*/30 9-23 * * *', async () => {
-        logger.info('[Cron] Executando atualização automática de resultados...');
+      // Executar a cada 5 minutos durante horário de extrações (9h às 23h)
+      cron.default.schedule('*/5 9-23 * * *', async () => {
+        logger.info('[Cron] Executando atualização automática de resultados (Varredura 5min)...');
         await autoUpdateService.updatePendingDraws();
       });
 
-      logger.info("✅ Agendador de resultados automáticos inicializado (a cada 30min, 9h-23h)");
+      logger.info("✅ Agendador de resultados automáticos inicializado (a cada 5min, 9h-23h)");
     } catch (err) {
       logger.error("❌ Erro ao inicializar agendador de resultados:", err);
     }
