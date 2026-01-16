@@ -16,12 +16,18 @@ export class AutoUpdateResultsService {
         try {
             console.log('[AutoUpdate] Iniciando atualização de resultados pendentes...');
 
-            // Buscar todas as extrações com status "pending" de hoje
-            const today = new Date();
+            // Buscar todas as extrações com status "pending" de hoje (Horário de Brasília)
+            // Usamos UTC-3 para garantir que o servidor (que pode estar em UTC) não pule o dia
+            const now = new Date();
+            const brazilTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+
+            const today = new Date(brazilTime);
             today.setHours(0, 0, 0, 0);
 
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
+
+            console.log(`[AutoUpdate] 📅 Buscando sorteios entre ${today.toISOString()} e ${tomorrow.toISOString()} (BRT)`);
 
             const pendingDraws = await db
                 .select()
@@ -34,7 +40,7 @@ export class AutoUpdateResultsService {
                     )
                 );
 
-            console.log(`[AutoUpdate] Encontradas ${pendingDraws.length} extrações pendentes`);
+            console.log(`[AutoUpdate] Encontradas ${pendingDraws.length} extrações pendentes para hoje`);
 
             // Buscar todos os animais para conversão
             const allAnimals = await db.select().from(animals);

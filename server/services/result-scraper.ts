@@ -147,6 +147,30 @@ export class ResultScraper {
             const $ = cheerio.load(html);
             const normalizedDrawName = this.normalizeString(drawName);
 
+            // Passo 1: Validar se a data na página do site é a mesma solicitada
+            // Procuramos por formatos como "15/01/2026" ou "15 de janeiro"
+            const pageText = $('body').text();
+
+            // Formatar drawDate para busca (Ex: 15/01/2026)
+            const day = String(drawDate.getDate()).padStart(2, '0');
+            const month = String(drawDate.getMonth() + 1).padStart(2, '0');
+            const year = drawDate.getFullYear();
+            const dateStr = `${day}/${month}/${year}`;
+
+            console.log(`[ResultScraper] 📅 Validando se o site contém a data: ${dateStr}`);
+
+            // Se o texto da página não contém a data do sorteio, avisar e abortar
+            if (!pageText.includes(dateStr)) {
+                // Tentar uma busca mais flexível (só dia e mês curta) para garantir
+                const shortDateStr = `${day}/${month}`;
+                if (!pageText.includes(shortDateStr)) {
+                    console.error(`[ResultScraper] ❌ A data ${dateStr} não foi encontrada na página. O site ainda pode estar com resultados do dia anterior ou não atualizou.`);
+                    return null;
+                }
+            }
+
+            console.log(`[ResultScraper] ✅ Data ${dateStr} confirmada na página.`);
+
             console.log(`[ResultScraper] 🔍 Procurando por: "${normalizedDrawName}"`);
 
             // Estratégia: Busca Exata pelo Nome (conforme solicitado pelo usuário)
