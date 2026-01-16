@@ -128,7 +128,7 @@ export class ResultScraper {
         const n = this.normalizeString(name);
         if (n.includes('SP')) return '/SP';
         if (n.includes('RJ')) return '/RJ';
-        if (n.includes('BA')) return '/BA';
+        if (n.includes('BA') || n.includes('MALUCA')) return '/BA';
         if (n.includes('PB') || n.includes('LOTEP') || n.includes('PARATODOS PB') || n.includes('CAMPINA')) return '/PB';
         if (n.includes('PE') || n.includes('PERNAMBUCO') || n.includes('AVAL') || n.includes('CAMINHO') || n.includes('POPULAR') || n.includes('MONTE CARLOS')) return '/PE';
         if (n.includes('CE') || n.includes('LOTECE')) return '/CE';
@@ -148,28 +148,42 @@ export class ResultScraper {
             const normalizedDrawName = this.normalizeString(drawName);
 
             // Passo 1: Validar se a data na página do site é a mesma solicitada
-            // Procuramos por formatos como "15/01/2026" ou "15 de janeiro"
+            // O site usa vários formatos: "16/01/2026", "16 de Janeiro", "de hoje", "01/16/2026"
             const pageText = $('body').text();
 
-            // Formatar drawDate para busca (Ex: 15/01/2026)
             const day = String(drawDate.getDate()).padStart(2, '0');
             const month = String(drawDate.getMonth() + 1).padStart(2, '0');
             const year = drawDate.getFullYear();
-            const dateStr = `${day}/${month}/${year}`;
 
-            console.log(`[ResultScraper] 📅 Validando se o site contém a data: ${dateStr}`);
+            const monthsPt = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-            // Se o texto da página não contém a data do sorteio, avisar e abortar
-            if (!pageText.includes(dateStr)) {
-                // Tentar uma busca mais flexível (só dia e mês curta) para garantir
-                const shortDateStr = `${day}/${month}`;
-                if (!pageText.includes(shortDateStr)) {
-                    console.error(`[ResultScraper] ❌ A data ${dateStr} não foi encontrada na página. O site ainda pode estar com resultados do dia anterior ou não atualizou.`);
-                    return null;
+            const possibleDates = [
+                `${day}/${month}/${year}`,       // 16/01/2026
+                `${day}/${month}/${String(year).slice(-2)}`, // 16/01/26
+                `${day}/${month}`,             // 16/01
+                `${month}/${day}/${year}`,       // 01/16/2026 (Format US às vezes no DOM)
+                `${day} de ${monthsPt[drawDate.getMonth()]}`, // 16 de Janeiro
+                "hoje", "HOJE", "Hoje"           // Termos genéricos de atualidade
+            ];
+
+            let dateConfirmed = false;
+            let matchingFormat = "";
+
+            for (const dateStr of possibleDates) {
+                if (pageText.includes(dateStr)) {
+                    dateConfirmed = true;
+                    matchingFormat = dateStr;
+                    break;
                 }
             }
 
-            console.log(`[ResultScraper] ✅ Data ${dateStr} confirmada na página.`);
+            if (!dateConfirmed) {
+                console.error(`[ResultScraper] ❌ Data não confirmada para ${drawDate.toLocaleDateString()}. Formatos tentados: ${possibleDates.join(', ')}`);
+                console.log(`[ResultScraper] 📝 Amostra do texto da página: ${pageText.substring(0, 500).replace(/\s+/g, ' ')}...`);
+                return null;
+            }
+
+            console.log(`[ResultScraper] ✅ Data confirmada na página (Match: "${matchingFormat}").`);
 
             console.log(`[ResultScraper] 🔍 Procurando por: "${normalizedDrawName}"`);
 
