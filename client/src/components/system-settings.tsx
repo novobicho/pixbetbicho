@@ -56,8 +56,9 @@ interface SystemSettings {
   logoUrl: string; // URL da logo do site
   faviconUrl: string; // URL do ícone que fica na barra do navegador
   allowBonusBets: boolean; // Permite apostas com saldo de bônus
-  bannerDesktopUrl?: string; // URL do banner para desktop
-  bannerMobileUrl?: string; // URL do banner para mobile
+  bannerDesktopUrl?: string; // URL do banner para desktop (página inicial)
+  bannerMobileUrl?: string; // URL do banner para mobile (página inicial)
+  bannerDashboardUrl?: string; // URL do banner para o painel do usuário
 }
 
 export function SystemSettings() {
@@ -104,7 +105,8 @@ export function SystemSettings() {
     faviconUrl: "/img/favicon.png",
     allowBonusBets: true, // Por padrão, permitir apostas com bônus
     bannerDesktopUrl: "/img/banner-desktop.jpg",
-    bannerMobileUrl: "/img/banner-mobile.jpg"
+    bannerMobileUrl: "/img/banner-mobile.jpg",
+    bannerDashboardUrl: "/img/banner-dashboard.jpg"
   });
 
   // Estado para controlar quando houve mudanças
@@ -116,6 +118,7 @@ export function SystemSettings() {
     favicon?: { data: string; file: File } | null;
     bannerDesktop?: { data: string; file: File } | null;
     bannerMobile?: { data: string; file: File } | null;
+    bannerDashboard?: { data: string; file: File } | null;
   }>({});
 
   // Estados para o diálogo de senha para a aba de aparência
@@ -130,6 +133,7 @@ export function SystemSettings() {
   const faviconInputRef = useRef<HTMLInputElement>(null);
   const bannerDesktopInputRef = useRef<HTMLInputElement>(null);
   const bannerMobileInputRef = useRef<HTMLInputElement>(null);
+  const bannerDashboardInputRef = useRef<HTMLInputElement>(null);
 
   // Função para verificar a senha quando tentar acessar a aba de aparência
   const handleTabChange = (value: string) => {
@@ -204,7 +208,7 @@ export function SystemSettings() {
   };
 
   // Função para selecionar imagem (logo, favicon ou banners)
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, imageType: 'logo' | 'favicon' | 'bannerDesktop' | 'bannerMobile') => {
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, imageType: 'logo' | 'favicon' | 'bannerDesktop' | 'bannerMobile' | 'bannerDashboard') => {
     console.log(`handleImageUpload chamado para: ${imageType}`);
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -246,9 +250,15 @@ export function SystemSettings() {
   };
 
   // Função para fazer o upload da imagem selecionada
-  const uploadSelectedImage = async (imageType: 'logo' | 'favicon' | 'bannerDesktop' | 'bannerMobile') => {
+  const uploadSelectedImage = async (imageType: 'logo' | 'favicon' | 'bannerDesktop' | 'bannerMobile' | 'bannerDashboard') => {
+    console.log(`[UPLOAD] Iniciando upload para tipo: ${imageType}`);
+    console.log(`[UPLOAD] Estado selectedImages:`, selectedImages);
+
     const selectedImage = selectedImages[imageType];
+    console.log(`[UPLOAD] Imagem selecionada para ${imageType}:`, selectedImage);
+
     if (!selectedImage) {
+      console.error(`[UPLOAD] Nenhuma imagem encontrada para ${imageType}`);
       toast({
         title: "Erro ao fazer upload",
         description: "Nenhuma imagem selecionada para upload",
@@ -258,7 +268,7 @@ export function SystemSettings() {
     }
 
     try {
-      console.log(`Iniciando upload de imagem ${imageType}...`);
+      console.log(`[UPLOAD] Iniciando upload de imagem ${imageType}...`);
 
       // Usar o endpoint real para upload de imagens
       const url = '/api/admin/upload-image';
@@ -310,16 +320,21 @@ export function SystemSettings() {
       }
 
       if (!data.imageUrl) {
+        console.error('[UPLOAD] API não retornou imageUrl:', data);
         throw new Error('A API não retornou uma URL de imagem válida');
       }
+
+      console.log('[UPLOAD] URL da imagem recebida:', data.imageUrl);
 
       // Atualizar a URL da imagem nas configurações
       const settingsKey =
         imageType === 'logo' ? 'logoUrl' :
           imageType === 'favicon' ? 'faviconUrl' :
             imageType === 'bannerDesktop' ? 'bannerDesktopUrl' :
-              'bannerMobileUrl';
+              imageType === 'bannerMobile' ? 'bannerMobileUrl' :
+                'bannerDashboardUrl';
 
+      console.log('[UPLOAD] Atualizando configuração:', settingsKey, '=', data.imageUrl);
       updateSettings(settingsKey, data.imageUrl);
 
       // Limpar a imagem selecionada depois de fazer upload
@@ -328,9 +343,17 @@ export function SystemSettings() {
         [imageType]: null
       }));
 
+      const imageTypeNames = {
+        logo: 'logo',
+        favicon: 'favicon',
+        bannerDesktop: 'banner desktop',
+        bannerMobile: 'banner mobile',
+        bannerDashboard: 'banner do dashboard'
+      };
+
       toast({
         title: "Upload realizado com sucesso",
-        description: `A imagem foi salva e configurada como ${imageType === 'logo' ? 'logo' : 'favicon'} do site.`,
+        description: `A imagem foi salva e configurada como ${imageTypeNames[imageType]} do site.`,
         variant: "default",
       });
 
@@ -1032,6 +1055,60 @@ export function SystemSettings() {
                             </div>
                           </div>
                         </div>
+
+                        {/* Banner do Painel do Usuário */}
+                        <div className="space-y-4 pt-4 border-t border-gray-100">
+                          <div>
+                            <Label htmlFor="banner-dashboard-url" className="font-medium text-base mb-2 block">Banner do Painel do Usuário</Label>
+                            <div className="flex flex-col gap-4">
+                              <div className="w-full bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center justify-center min-h-[200px]">
+                                {settings.bannerDashboardUrl ? (
+                                  <img src={settings.bannerDashboardUrl} alt="Banner Dashboard" className="max-w-full max-h-[180px] object-contain rounded" />
+                                ) : (
+                                  <div className="text-gray-400 text-center">
+                                    <Upload className="w-12 h-12 mx-auto mb-2" />
+                                    <span className="text-sm">Banner do Dashboard não definido</span>
+                                    <p className="text-xs mt-1">Recomendado: 1200x300px</p>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="space-y-3">
+                                <Input id="banner-dashboard-url" type="text" placeholder="URL do banner do dashboard (ex: /img/banner-dashboard.jpg)" value={settings.bannerDashboardUrl || ''} onChange={(e) => updateSettings("bannerDashboardUrl", e.target.value)} className="w-full" />
+                                <p className="text-xs text-gray-500">Banner exibido no painel do usuário. Tamanho recomendado: 1200x300px. Formato: JPG ou PNG.</p>
+
+                                <div className="flex flex-wrap gap-2">
+                                  <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => updateSettings("bannerDashboardUrl", "/img/banner-dashboard.jpg")}>Restaurar Padrão</Button>
+                                  <div>
+                                    <input type="file" ref={bannerDashboardInputRef} style={{ display: 'none' }} accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerDashboard')} />
+                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => {
+                                      console.log("Botão selecionar banner dashboard clicado");
+                                      bannerDashboardInputRef.current?.click();
+                                    }}>
+                                      <Upload className="h-3 w-3" />Selecionar Imagem
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {selectedImages.bannerDashboard && (
+                                  <div className="mt-2 border border-dashed border-gray-300 p-3 rounded-md bg-purple-50">
+                                    <div className="flex items-center gap-3">
+                                      <div className="h-16 w-24 rounded overflow-hidden flex-shrink-0 border border-gray-200">
+                                        <img src={selectedImages.bannerDashboard.data} alt="Banner Dashboard preview" className="h-full w-full object-cover" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-xs text-gray-600 mb-1 font-medium">{selectedImages.bannerDashboard.file.name}</p>
+                                        <p className="text-xs text-gray-500 mb-2">Tamanho: {(selectedImages.bannerDashboard.file.size / 1024).toFixed(0)} KB</p>
+                                        <Button type="button" variant="default" size="sm" className="text-xs" onClick={() => uploadSelectedImage('bannerDashboard')}>Carregar Banner Dashboard</Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
 
                         <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
                           <h4 className="text-sm font-medium text-blue-800 mb-2">📐 Tamanhos Recomendados</h4>
