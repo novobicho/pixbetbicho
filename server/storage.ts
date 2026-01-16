@@ -4196,6 +4196,10 @@ export class DatabaseStorage implements IStorage {
       if ('site_description' in row) settings.siteDescription = row.site_description;
       if ('logo_url' in row) settings.logoUrl = row.logo_url;
       if ('favicon_url' in row) settings.faviconUrl = row.favicon_url;
+      if ('banner_desktop_url' in row) settings.bannerDesktopUrl = row.banner_desktop_url;
+      if ('banner_mobile_url' in row) settings.bannerMobileUrl = row.banner_mobile_url;
+      if ('signup_bonus_banner_enabled' in row) settings.signupBonusBannerEnabled = Boolean(row.signup_bonus_banner_enabled);
+      if ('first_deposit_bonus_banner_enabled' in row) settings.firstDepositBonusBannerEnabled = Boolean(row.first_deposit_bonus_banner_enabled);
 
       // Configurações de bônus de cadastro
       if ('signup_bonus_enabled' in row) settings.signupBonusEnabled = Boolean(row.signup_bonus_enabled);
