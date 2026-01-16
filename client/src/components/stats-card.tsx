@@ -2,8 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Draw } from "@/types";
-import { 
-  History, 
+import {
+  History,
   Settings,
   Clock,
   Zap,
@@ -126,7 +126,7 @@ export function UserActionsCard({
               <FaDog className="absolute h-20 w-20 text-[#b0d525] animate-bounce group-hover:rotate-12 transition-transform" />
               <FaKiwiBird className="absolute h-8 w-8 text-white opacity-20 -top-1 -right-2 animate-ping" />
             </div>
-            
+
             {/* Texto com efeito de brilho */}
             <div className="mr-8 text-right">
               <span className="block text-xl font-bold text-white drop-shadow-md">
@@ -138,17 +138,17 @@ export function UserActionsCard({
             </div>
           </button>
         </div>
-        
+
         {/* Botões secundários */}
         <div className="grid grid-cols-2 gap-2">
           <ActionButton
             icon={<History className="h-4 w-4 text-purple-600" />}
-            label="Histórico"
+            label="Minhas Apostas"
             onClick={onHistory}
           />
           <ActionButton
             icon={<Settings className="h-4 w-4 text-gray-600" />}
-            label="Config"
+            label="Meus Dados"
             onClick={onSettings}
           />
         </div>
