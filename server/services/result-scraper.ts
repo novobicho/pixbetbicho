@@ -52,82 +52,69 @@ export class ResultScraper {
             }
 
             const suffix = this.getStateSuffix(drawName);
-            const url = this.baseUrl + suffix;
+            const targetUrl = this.baseUrl + suffix;
 
-            // Passo 1: Obter cookies da home
-            const sessionCookies = await this.getCookies(this.baseUrl);
-            const cookieHeader = sessionCookies.length > 0 ? sessionCookies.join('; ') : '';
+            // Verificação de Scraper API (Proxy Gateway)
+            const scraperApiKey = process.env.SCRAPER_API_KEY;
+            let finalUrl = targetUrl;
+            let isUsingProxy = false;
 
-            // Passo 2: DELAY HUMANO AUMENTADO (4s)
-            console.log(`[ResultScraper] 🕒 Esperando 4s para simular comportamento humano cauteloso...`);
-            await this.sleep(4000);
+            if (scraperApiKey) {
+                console.log(`[ResultScraper] 🛡️ Usando Scraper API para burlar bloqueio...`);
+                // Construindo URL do gateway (ex: ScraperAPI, ZenRows, etc)
+                // Usamos o padrão de ScraperAPI como exemplo, mas é facilmente adaptável
+                finalUrl = `https://api.scraperapi.com/?api_key=${scraperApiKey}&url=${encodeURIComponent(targetUrl)}&render=false`;
+                isUsingProxy = true;
+            }
 
-            console.log(`[ResultScraper] 🌐 Buscando em: ${url} para o sorteio: "${drawName}"`);
+            // Passo 1: Obter cookies (apenas se NÃO estiver usando proxy, pois o proxy gerencia isso)
+            let cookieHeader = '';
+            if (!isUsingProxy) {
+                const sessionCookies = await this.getCookies(this.baseUrl);
+                cookieHeader = sessionCookies.length > 0 ? sessionCookies.join('; ') : '';
+                console.log(`[ResultScraper] 🕒 Esperando 4s (comportamento humano)...`);
+                await this.sleep(4000);
+            }
+
+            console.log(`[ResultScraper] 🌐 Buscando em: ${isUsingProxy ? '(via Proxy) ' : ''}${targetUrl} para: "${drawName}"`);
 
             const fetchOptions = {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'same-origin',
-                    'Sec-Fetch-User': '?1',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'pt-BR,pt;q=0.9',
+                    ...(cookieHeader && !isUsingProxy ? { 'Cookie': cookieHeader } : {}),
                     'Referer': this.baseUrl,
-                    ...(cookieHeader ? { 'Cookie': cookieHeader } : {}),
-                    'Sec-CH-UA': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                    'Sec-CH-UA-Mobile': '?0',
-                    'Sec-CH-UA-Platform': '"Windows"',
                 },
-                signal: AbortSignal.timeout(10000)
+                signal: AbortSignal.timeout(isUsingProxy ? 30000 : 10000) // Gateways de proxy levam mais tempo
             };
 
-            let response = await fetch(url, fetchOptions);
+            let response = await fetch(finalUrl, fetchOptions);
             console.log(`[ResultScraper] 📡 Status da Resposta: ${response.status} ${response.statusText}`);
 
-            // Passo 3: MÚLTIPLOS FALLBACKS SE BLOQUEADO (403)
-            if (!response.ok && response.status === 403) {
-                console.log('[ResultScraper] 🔄 Bloqueado (403). Tentando Fallback 1: Sem WWW...');
-                const rootUrl = url.replace('www.', '');
-                try {
-                    await this.sleep(2000);
-                    const rootResponse = await fetch(rootUrl, {
-                        ...fetchOptions,
-                        headers: { ...fetchOptions.headers, 'Referer': 'https://www.google.com/' }
-                    });
-                    console.log(`[ResultScraper] 📡 Status Fallback 1: ${rootResponse.status}`);
-                    if (rootResponse.ok) response = rootResponse;
-                } catch (e) {
-                    console.error('[ResultScraper] ❌ Erro no Fallback 1:', e);
-                }
+            // Se ainda assim der 403 e não estiver usando proxy, avisar sobre a necessidade da API Key
+            if (!response.ok && response.status === 403 && !isUsingProxy) {
+                console.error(`[ResultScraper] ❌ BLOQUEIO DETECTADO (403). Por favor, configure SCRAPER_API_KEY no painel da DigitalOcean para usar um Proxy.`);
 
-                if (!response.ok && response.status === 403) {
-                    console.log('[ResultScraper] 🔄 Ainda bloqueado. Tentando Fallback 2: HTTP (não-seguro)...');
-                    const httpUrl = url.replace('https://', 'http://');
-                    try {
-                        await this.sleep(2000);
-                        const httpResponse = await fetch(httpUrl, fetchOptions);
-                        console.log(`[ResultScraper] 📡 Status Fallback 2: ${httpResponse.status}`);
-                        if (httpResponse.ok) response = httpResponse;
-                    } catch (e) {
-                        console.error('[ResultScraper] ❌ Erro no Fallback 2:', e);
-                    }
-                }
+                // Tentativa de Fallback sem WWW (pode ser útil no localhost)
+                console.log('[ResultScraper] 🔄 Tentando Fallback local: Sem WWW...');
+                const rootUrl = targetUrl.replace('www.', '');
+                try {
+                    const fallbackResponse = await fetch(rootUrl, { ...fetchOptions, signal: AbortSignal.timeout(5000) });
+                    if (fallbackResponse.ok) response = fallbackResponse;
+                } catch (e) { }
             }
 
             if (!response.ok) {
-                console.error(`[ResultScraper] ❌ Falha definitiva após fallbacks: HTTP ${response.status}`);
+                console.error(`[ResultScraper] ❌ Falha definitiva: HTTP ${response.status}`);
                 return null;
             }
 
             const html = await response.text();
             console.log(`[ResultScraper] 📄 HTML recebido (${html.length} bytes)`);
 
-            if (html.includes('Cloudflare') || html.includes('Access Denied') || html.includes('captcha') || html.includes('Acesso Bloqueado')) {
-                console.warn(`[ResultScraper] ⚠️ Possível detecção de bot detectada no HTML!`);
+            if (html.includes('Acesso Bloqueado') || html.includes('captcha')) {
+                console.warn(`[ResultScraper] ⚠️ O HTML recebido parece ser uma página de bloqueio mesmo com Proxy!`);
             }
 
             return this.parseResult(html, drawName, drawDate);
