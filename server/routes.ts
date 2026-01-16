@@ -60,6 +60,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Rota de teste do scraper
   app.get("/api/test-scraper", async (req, res) => {
     try {
+      // Auto-migração para garantir que banner_dashboard_url exista
+      try {
+        console.log("Verificando schema auto-migração...");
+        const { rows } = await pool.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'system_settings' 
+            AND column_name = 'banner_dashboard_url'
+          `);
+
+        if (rows.length === 0) {
+          console.log("Coluna banner_dashboard_url ausente. Adicionando...");
+          await pool.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS banner_dashboard_url TEXT DEFAULT '/img/banner-dashboard.jpg'`);
+          console.log("Coluna banner_dashboard_url adicionada com sucesso.");
+        }
+      } catch (err) {
+        console.error("Erro na auto-migração:", err);
+      }
+
       // Teste com um sorteio da Bahia
       const result = await resultScraper.fetchResult('Jogo do Bicho 12h - BA', new Date());
       res.json(result);
@@ -1255,6 +1274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Banners
           bannerDesktopUrl: settings.bannerDesktopUrl,
           bannerMobileUrl: settings.bannerMobileUrl,
+          bannerDashboardUrl: settings.bannerDashboardUrl,
           // Configurações de bônus
           signupBonusEnabled: settings.signupBonusEnabled || false,
           signupBonusAmount: settings.signupBonusAmount || 0,
@@ -3217,6 +3237,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Endpoint público para configurações do sistema (usado pelo dashboard do usuário)
+  app.get("/api/settings", async (req, res) => {
+    try {
+      const settings = await storage.getSystemSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching public settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // Rota de emergência para corrigir o banco de dados
+  app.get("/api/fix-db", async (req, res) => {
+    try {
+      await pool.query(`
+        ALTER TABLE system_settings 
+        ADD COLUMN IF NOT EXISTS banner_dashboard_url TEXT DEFAULT '/img/banner-dashboard.jpg'
+      `);
+      res.json({ success: true, message: "Coluna banner_dashboard_url verificada/adicionada." });
+    } catch (error) {
+      console.error("Erro ao corrigir DB:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/admin/settings", requireAdmin, async (req, res) => {
     try {
       // Verificar se as colunas de branding e bônus existem
@@ -3348,7 +3393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         WHERE table_name = 'system_settings' 
         AND column_name IN (
           'site_name', 'site_description', 'logo_url', 'favicon_url',
-          'banner_desktop_url', 'banner_mobile_url', 
+          'banner_desktop_url', 'banner_mobile_url', 'banner_dashboard_url',
           'signup_bonus_banner_enabled', 'first_deposit_bonus_banner_enabled'
         )
       `);
@@ -3366,6 +3411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Banners
       if (!existingColumns.includes('banner_desktop_url')) columnsToAdd.push("banner_desktop_url TEXT NOT NULL DEFAULT '/img/banner-desktop.jpg'");
       if (!existingColumns.includes('banner_mobile_url')) columnsToAdd.push("banner_mobile_url TEXT NOT NULL DEFAULT '/img/banner-mobile.jpg'");
+      if (!existingColumns.includes('banner_dashboard_url')) columnsToAdd.push("banner_dashboard_url TEXT NOT NULL DEFAULT '/img/banner-dashboard.jpg'");
       if (!existingColumns.includes('signup_bonus_banner_enabled')) columnsToAdd.push("signup_bonus_banner_enabled BOOLEAN NOT NULL DEFAULT false");
       if (!existingColumns.includes('first_deposit_bonus_banner_enabled')) columnsToAdd.push("first_deposit_bonus_banner_enabled BOOLEAN NOT NULL DEFAULT false");
 
@@ -3422,11 +3468,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Tipo de imagem recebido: ${imageType}`);
 
       // Verificar se o tipo é válido (logo, favicon ou banners)
-      if (imageType !== 'logo' && imageType !== 'favicon' && imageType !== 'bannerDesktop' && imageType !== 'bannerMobile') {
+      if (imageType !== 'logo' && imageType !== 'favicon' && imageType !== 'bannerDesktop' && imageType !== 'bannerMobile' && imageType !== 'bannerDashboard') {
         console.log('Erro: Tipo de imagem inválido:', imageType);
         return res.status(400).json({
           success: false,
-          message: "Tipo de imagem deve ser 'logo', 'favicon', 'bannerDesktop' ou 'bannerMobile'"
+          message: "Tipo de imagem deve ser 'logo', 'favicon', 'bannerDesktop', 'bannerMobile' ou 'bannerDashboard'"
         });
       }
 
@@ -3480,13 +3526,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fileName = 'banner-desktop' + extension;
       } else if (imageType === 'bannerMobile') {
         fileName = 'banner-mobile' + extension;
+      } else if (imageType === 'bannerDashboard') {
+        fileName = 'banner-dashboard' + extension;
       }
 
       // Caminho para salvar a imagem no servidor
       const pathsToSave: string[] = [];
 
       // Caminho fonte (sempre salvar aqui para persistência relativa)
-      if (imageType === 'logo' || imageType === 'bannerDesktop' || imageType === 'bannerMobile') {
+      if (imageType === 'logo' || imageType === 'bannerDesktop' || imageType === 'bannerMobile' || imageType === 'bannerDashboard') {
         pathsToSave.push(path.join(process.cwd(), 'client', 'public', 'img', fileName));
       } else {
         // Favicon tem tratamento especial
@@ -3566,6 +3614,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         settings.bannerDesktopUrl = imageUrl;
       } else if (imageType === 'bannerMobile') {
         settings.bannerMobileUrl = imageUrl;
+      } else if (imageType === 'bannerDashboard') {
+        settings.bannerDashboardUrl = imageUrl;
       }
 
       // Salvar as configurações atualizadas
