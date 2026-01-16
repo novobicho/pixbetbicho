@@ -205,6 +205,7 @@ export function SystemSettings() {
 
   // Função para selecionar imagem (logo, favicon ou banners)
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, imageType: 'logo' | 'favicon' | 'bannerDesktop' | 'bannerMobile') => {
+    console.log(`handleImageUpload chamado para: ${imageType}`);
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
@@ -950,8 +951,11 @@ export function SystemSettings() {
                                 <div className="flex flex-wrap gap-2">
                                   <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => updateSettings("bannerDesktopUrl", "/img/banner-desktop.jpg")}>Restaurar Padrão</Button>
                                   <div>
-                                    <input type="file" ref={bannerDesktopInputRef} className="hidden" accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerDesktop')} />
-                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => { bannerDesktopInputRef.current?.click(); }}>
+                                    <input type="file" ref={bannerDesktopInputRef} style={{ opacity: 0, position: 'absolute', zIndex: -1, width: 0, height: 0, pointerEvents: 'none' }} accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerDesktop')} />
+                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => {
+                                      console.log("Botão selecionar banner desktop clicado");
+                                      bannerDesktopInputRef.current?.click();
+                                    }}>
                                       <Upload className="h-3 w-3" />Selecionar Imagem
                                     </Button>
                                   </div>
@@ -1000,8 +1004,11 @@ export function SystemSettings() {
                                 <div className="flex flex-wrap gap-2">
                                   <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => updateSettings("bannerMobileUrl", "/img/banner-mobile.jpg")}>Restaurar Padrão</Button>
                                   <div>
-                                    <input type="file" ref={bannerMobileInputRef} className="hidden" accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerMobile')} />
-                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => { bannerMobileInputRef.current?.click(); }}>
+                                    <input type="file" ref={bannerMobileInputRef} style={{ opacity: 0, position: 'absolute', zIndex: -1, width: 0, height: 0, pointerEvents: 'none' }} accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerMobile')} />
+                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => {
+                                      console.log("Botão selecionar banner mobile clicado");
+                                      bannerMobileInputRef.current?.click();
+                                    }}>
                                       <Upload className="h-3 w-3" />Selecionar Imagem
                                     </Button>
                                   </div>
