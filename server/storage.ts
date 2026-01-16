@@ -4410,6 +4410,8 @@ export class DatabaseStorage implements IStorage {
 
       // Banners promocionais
       addColumn('promotional_banners_enabled', 'promotionalBannersEnabled', settings.promotionalBannersEnabled === true);
+      addColumn('banner_desktop_url', 'bannerDesktopUrl', settings.bannerDesktopUrl || '/img/banner-desktop.jpg');
+      addColumn('banner_mobile_url', 'bannerMobileUrl', settings.bannerMobileUrl || '/img/banner-mobile.jpg');
       addColumn('signup_bonus_banner_enabled', 'signupBonusBannerEnabled', settings.signupBonusBannerEnabled === true);
       addColumn('first_deposit_bonus_banner_enabled', 'firstDepositBonusBannerEnabled', settings.firstDepositBonusBannerEnabled === true);
 
