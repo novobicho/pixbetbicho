@@ -8,11 +8,11 @@ import { User } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
-import { 
-  Eye, 
-  Edit, 
-  Trash2, 
-  DollarSign, 
+import {
+  Eye,
+  Edit,
+  Trash2,
+  DollarSign,
   Search,
   Ban,
   Check
@@ -25,13 +25,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -79,7 +79,7 @@ export function UserManagement() {
   // Mutations
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: number) => {
-      const response = await apiRequest("DELETE", `/api/users/${userId}`);
+      const response = await apiRequest("DELETE", `/api/admin/users/${userId}`);
       if (!response.ok) throw new Error("Erro ao excluir usuário");
       return response.json();
     },
@@ -91,7 +91,7 @@ export function UserManagement() {
 
   const updateUserMutation = useMutation({
     mutationFn: async (userData: any) => {
-      const response = await apiRequest("PATCH", `/api/users/${selectedUser?.id}`, userData);
+      const response = await apiRequest("PUT", `/api/admin/users/${selectedUser?.id}`, userData);
       if (!response.ok) throw new Error("Erro ao atualizar usuário");
       return response.json();
     },
@@ -104,7 +104,7 @@ export function UserManagement() {
 
   const updateBalanceMutation = useMutation({
     mutationFn: async (newBalance: number) => {
-      const response = await apiRequest("PATCH", `/api/users/${selectedUser?.id}/balance`, {
+      const response = await apiRequest("PUT", `/api/admin/users/${selectedUser?.id}`, {
         balance: newBalance,
       });
       if (!response.ok) throw new Error("Erro ao atualizar saldo");
@@ -322,17 +322,17 @@ export function UserManagement() {
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="h-8 w-8 p-0"
                           onClick={() => showBalanceUpdate(user)}
                         >
                           <DollarSign className="h-4 w-4" />
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="h-8 w-8 p-0"
                           onClick={() => showUserDetails(user)}
                         >
@@ -340,7 +340,7 @@ export function UserManagement() {
                         </Button>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-2 text-sm mb-3">
                       <div>
                         <span className="text-gray-500">Saldo:</span>
@@ -351,7 +351,7 @@ export function UserManagement() {
                         <div className="font-medium">{formatCurrency(user.bonusBalance || 0)}</div>
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between items-center">
                       <Badge variant={user.blocked ? "destructive" : "default"}>
                         {user.blocked ? "Bloqueado" : "Ativo"}
@@ -442,14 +442,14 @@ export function UserManagement() {
             </div>
           </div>
           <DialogFooter className="flex justify-center sm:justify-end">
-            <Button 
+            <Button
               onClick={() => setEditOpen(false)}
               variant="outline"
               className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={() => updateUserMutation.mutate(editUserData)}
               disabled={updateUserMutation.isPending}
               className="w-full sm:w-auto"
@@ -485,14 +485,14 @@ export function UserManagement() {
             </div>
           </div>
           <DialogFooter className="flex justify-center sm:justify-end">
-            <Button 
+            <Button
               onClick={() => setBalanceOpen(false)}
               variant="outline"
               className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={() => updateBalanceMutation.mutate(amount)}
               disabled={updateBalanceMutation.isPending}
               className="w-full sm:w-auto"
@@ -511,7 +511,7 @@ export function UserManagement() {
               {selectedUser?.blocked ? "Desbloquear" : "Bloquear"} Usuário
             </DialogTitle>
             <DialogDescription>
-              {selectedUser?.blocked 
+              {selectedUser?.blocked
                 ? `Desbloquear o usuário ${selectedUser?.username}?`
                 : `Bloquear o usuário ${selectedUser?.username}?`
               }
@@ -531,7 +531,7 @@ export function UserManagement() {
             </div>
           )}
           <DialogFooter className="flex justify-center sm:justify-end">
-            <Button 
+            <Button
               onClick={() => {
                 setBlockOpen(false);
                 setBlockReason("");
@@ -541,7 +541,7 @@ export function UserManagement() {
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={() => {
                 if (selectedUser) {
                   blockUserMutation.mutate({
@@ -555,10 +555,10 @@ export function UserManagement() {
               variant={selectedUser?.blocked ? "default" : "destructive"}
               className="w-full sm:w-auto"
             >
-              {blockUserMutation.isPending 
-                ? "Processando..." 
-                : selectedUser?.blocked 
-                  ? "Desbloquear" 
+              {blockUserMutation.isPending
+                ? "Processando..."
+                : selectedUser?.blocked
+                  ? "Desbloquear"
                   : "Bloquear"
               }
             </Button>
