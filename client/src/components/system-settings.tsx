@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,12 @@ export function SystemSettings() {
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isAppearanceUnlocked, setIsAppearanceUnlocked] = useState(false);
+
+  // Refs para inputs de arquivo
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
+  const bannerDesktopInputRef = useRef<HTMLInputElement>(null);
+  const bannerMobileInputRef = useRef<HTMLInputElement>(null);
 
   // Função para verificar a senha quando tentar acessar a aba de aparência
   const handleTabChange = (value: string) => {
@@ -711,7 +717,7 @@ export function SystemSettings() {
                             <div>
                               <input
                                 type="file"
-                                id="logo-upload"
+                                ref={logoInputRef}
                                 className="hidden"
                                 accept="image/png,image/jpeg,image/svg+xml"
                                 onChange={(e) => handleImageUpload(e, 'logo')}
@@ -723,8 +729,7 @@ export function SystemSettings() {
                                 className="text-xs flex items-center gap-1"
                                 onClick={() => {
                                   console.log("Clicou no botão de upload de logo");
-                                  const fileInput = document.getElementById('logo-upload') as HTMLInputElement;
-                                  fileInput?.click();
+                                  logoInputRef.current?.click();
                                 }}
                               >
                                 <Upload className="h-3 w-3" />
@@ -820,7 +825,7 @@ export function SystemSettings() {
                             <div>
                               <input
                                 type="file"
-                                id="favicon-upload"
+                                ref={faviconInputRef}
                                 className="hidden"
                                 accept="image/png,image/jpeg,image/svg+xml,image/x-icon"
                                 onChange={(e) => handleImageUpload(e, 'favicon')}
@@ -832,8 +837,7 @@ export function SystemSettings() {
                                 className="text-xs flex items-center gap-1"
                                 onClick={() => {
                                   console.log("Clicou no botão de upload de favicon");
-                                  const fileInput = document.getElementById('favicon-upload') as HTMLInputElement;
-                                  fileInput?.click();
+                                  faviconInputRef.current?.click();
                                 }}
                               >
                                 <Upload className="h-3 w-3" />
@@ -918,7 +922,7 @@ export function SystemSettings() {
                       <p className="text-sm text-gray-500 mb-4">
                         Configure banners diferentes para desktop e mobile para evitar distorções.
                       </p>
-                      
+
                       <div className="grid grid-cols-1 gap-6">
                         {/* Banner Desktop */}
                         <div className="space-y-4">
@@ -938,21 +942,21 @@ export function SystemSettings() {
                                   </div>
                                 )}
                               </div>
-                              
+
                               <div className="space-y-3">
                                 <Input id="banner-desktop-url" type="text" placeholder="URL do banner desktop (ex: /img/banner-desktop.jpg)" value={settings.bannerDesktopUrl || ''} onChange={(e) => updateSettings("bannerDesktopUrl", e.target.value)} className="w-full" />
                                 <p className="text-xs text-gray-500">Banner exibido em telas grandes (desktop/tablet). Tamanho recomendado: 1920x400px. Formato: JPG ou PNG.</p>
-                                
+
                                 <div className="flex flex-wrap gap-2">
                                   <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => updateSettings("bannerDesktopUrl", "/img/banner-desktop.jpg")}>Restaurar Padrão</Button>
                                   <div>
-                                    <input type="file" id="banner-desktop-upload" className="hidden" accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerDesktop')} />
-                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => { const fileInput = document.getElementById('banner-desktop-upload') as HTMLInputElement; fileInput?.click(); }}>
+                                    <input type="file" ref={bannerDesktopInputRef} className="hidden" accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerDesktop')} />
+                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => { bannerDesktopInputRef.current?.click(); }}>
                                       <Upload className="h-3 w-3" />Selecionar Imagem
                                     </Button>
                                   </div>
                                 </div>
-                                
+
                                 {selectedImages.bannerDesktop && (
                                   <div className="mt-2 border border-dashed border-gray-300 p-3 rounded-md bg-blue-50">
                                     <div className="flex items-center gap-3">
@@ -971,7 +975,7 @@ export function SystemSettings() {
                             </div>
                           </div>
                         </div>
-                        
+
                         {/* Banner Mobile */}
                         <div className="space-y-4 pt-4 border-t border-gray-100">
                           <div>
@@ -988,21 +992,21 @@ export function SystemSettings() {
                                   </div>
                                 )}
                               </div>
-                              
+
                               <div className="space-y-3">
                                 <Input id="banner-mobile-url" type="text" placeholder="URL do banner mobile (ex: /img/banner-mobile.jpg)" value={settings.bannerMobileUrl || ''} onChange={(e) => updateSettings("bannerMobileUrl", e.target.value)} className="w-full" />
                                 <p className="text-xs text-gray-500">Banner exibido em telas pequenas (smartphones). Tamanho recomendado: 800x600px. Formato: JPG ou PNG.</p>
-                                
+
                                 <div className="flex flex-wrap gap-2">
                                   <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => updateSettings("bannerMobileUrl", "/img/banner-mobile.jpg")}>Restaurar Padrão</Button>
                                   <div>
-                                    <input type="file" id="banner-mobile-upload" className="hidden" accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerMobile')} />
-                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => { const fileInput = document.getElementById('banner-mobile-upload') as HTMLInputElement; fileInput?.click(); }}>
+                                    <input type="file" ref={bannerMobileInputRef} className="hidden" accept="image/jpeg,image/png,image/jpg" onChange={(e) => handleImageUpload(e, 'bannerMobile')} />
+                                    <Button type="button" variant="secondary" size="sm" className="text-xs flex items-center gap-1" onClick={() => { bannerMobileInputRef.current?.click(); }}>
                                       <Upload className="h-3 w-3" />Selecionar Imagem
                                     </Button>
                                   </div>
                                 </div>
-                                
+
                                 {selectedImages.bannerMobile && (
                                   <div className="mt-2 border border-dashed border-gray-300 p-3 rounded-md bg-green-50">
                                     <div className="flex items-center gap-3">
@@ -1021,7 +1025,7 @@ export function SystemSettings() {
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
                           <h4 className="text-sm font-medium text-blue-800 mb-2">📐 Tamanhos Recomendados</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-blue-700">
