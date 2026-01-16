@@ -44,7 +44,7 @@ export default function HomePage() {
   });
 
   const { data: systemSettings, isLoading: isLoadingSettings } = useQuery<SystemSettings>({
-    queryKey: ["/api/system-settings"],
+    queryKey: ["/api/settings"],
   });
 
   const isLoading = isLoadingAnimals || isLoadingDraws || isLoadingGameModes || isLoadingSettings;
