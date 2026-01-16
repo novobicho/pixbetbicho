@@ -1252,6 +1252,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           siteDescription: settings.siteDescription,
           logoUrl: settings.logoUrl,
           faviconUrl: settings.faviconUrl,
+          // Banners
+          bannerDesktopUrl: settings.bannerDesktopUrl,
+          bannerMobileUrl: settings.bannerMobileUrl,
           // Configurações de bônus
           signupBonusEnabled: settings.signupBonusEnabled || false,
           signupBonusAmount: settings.signupBonusAmount || 0,
@@ -3343,7 +3346,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         SELECT column_name 
         FROM information_schema.columns 
         WHERE table_name = 'system_settings' 
-        AND column_name IN ('site_name', 'site_description', 'logo_url', 'favicon_url')
+        AND column_name IN (
+          'site_name', 'site_description', 'logo_url', 'favicon_url',
+          'banner_desktop_url', 'banner_mobile_url', 
+          'signup_bonus_banner_enabled', 'first_deposit_bonus_banner_enabled'
+        )
       `);
 
       const existingColumns = rows.map(row => row.column_name);
@@ -3355,6 +3362,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!existingColumns.includes('site_description')) columnsToAdd.push("site_description TEXT NOT NULL DEFAULT 'A melhor plataforma de apostas online'");
       if (!existingColumns.includes('logo_url')) columnsToAdd.push("logo_url TEXT NOT NULL DEFAULT '/img/logo.png'");
       if (!existingColumns.includes('favicon_url')) columnsToAdd.push("favicon_url TEXT NOT NULL DEFAULT '/img/favicon.png'");
+
+      // Banners
+      if (!existingColumns.includes('banner_desktop_url')) columnsToAdd.push("banner_desktop_url TEXT NOT NULL DEFAULT '/img/banner-desktop.jpg'");
+      if (!existingColumns.includes('banner_mobile_url')) columnsToAdd.push("banner_mobile_url TEXT NOT NULL DEFAULT '/img/banner-mobile.jpg'");
+      if (!existingColumns.includes('signup_bonus_banner_enabled')) columnsToAdd.push("signup_bonus_banner_enabled BOOLEAN NOT NULL DEFAULT false");
+      if (!existingColumns.includes('first_deposit_bonus_banner_enabled')) columnsToAdd.push("first_deposit_bonus_banner_enabled BOOLEAN NOT NULL DEFAULT false");
 
       if (columnsToAdd.length > 0) {
         // Construir a query para adicionar as colunas
