@@ -54,17 +54,17 @@ export class ResultScraper {
             const suffix = this.getStateSuffix(drawName);
             const url = this.baseUrl + suffix;
 
-            // Passo 1: Obter cookies da home para parecer um usuário real
+            // Passo 1: Obter cookies da home
             const sessionCookies = await this.getCookies(this.baseUrl);
             const cookieHeader = sessionCookies.length > 0 ? sessionCookies.join('; ') : '';
 
-            // Passo 2: DELAY HUMANO (Essencial para driblar firewalls que medem velocidade)
-            console.log(`[ResultScraper] 🕒 Esperando 2.5s para simular clique humano...`);
-            await this.sleep(2500);
+            // Passo 2: DELAY HUMANO AUMENTADO (4s)
+            console.log(`[ResultScraper] 🕒 Esperando 4s para simular comportamento humano cauteloso...`);
+            await this.sleep(4000);
 
             console.log(`[ResultScraper] 🌐 Buscando em: ${url} para o sorteio: "${drawName}"`);
 
-            const response = await fetch(url, {
+            const fetchOptions = {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -76,58 +76,58 @@ export class ResultScraper {
                     'Sec-Fetch-Mode': 'navigate',
                     'Sec-Fetch-Site': 'same-origin',
                     'Sec-Fetch-User': '?1',
-                    'Cache-Control': 'max-age=0',
                     'Referer': this.baseUrl,
                     ...(cookieHeader ? { 'Cookie': cookieHeader } : {}),
                     'Sec-CH-UA': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
                     'Sec-CH-UA-Mobile': '?0',
                     'Sec-CH-UA-Platform': '"Windows"',
                 },
-                // Adicionando timeout para segurança
                 signal: AbortSignal.timeout(10000)
-            });
+            };
 
+            let response = await fetch(url, fetchOptions);
             console.log(`[ResultScraper] 📡 Status da Resposta: ${response.status} ${response.statusText}`);
 
-            if (!response.ok) {
-                console.error(`[ResultScraper] ❌ Erro HTTP ${response.status}`);
-                const errorText = await response.text().catch(() => 'Não foi possível ler o corpo do erro');
-                console.log(`[ResultScraper] 📝 Conteúdo do erro (primeiros 200 chars): ${errorText.substring(0, 200)}`);
+            // Passo 3: MÚLTIPLOS FALLBACKS SE BLOQUEADO (403)
+            if (!response.ok && response.status === 403) {
+                console.log('[ResultScraper] 🔄 Bloqueado (403). Tentando Fallback 1: Sem WWW...');
+                const rootUrl = url.replace('www.', '');
+                try {
+                    await this.sleep(2000);
+                    const rootResponse = await fetch(rootUrl, {
+                        ...fetchOptions,
+                        headers: { ...fetchOptions.headers, 'Referer': 'https://www.google.com/' }
+                    });
+                    console.log(`[ResultScraper] 📡 Status Fallback 1: ${rootResponse.status}`);
+                    if (rootResponse.ok) response = rootResponse;
+                } catch (e) {
+                    console.error('[ResultScraper] ❌ Erro no Fallback 1:', e);
+                }
 
-                // Passo 3: TENTATIVA VIA MOBILE DOMAIN (m.resultadofacil.com.br)
-                if (response.status === 403) {
-                    console.log('[ResultScraper] 🔄 Bloqueado no principal. Tentando via MOBILE (m.resultadofacil.com.br)...');
-                    const mobileUrl = url.replace('www.', 'm.').replace('https://', 'http://'); // Tenta HTTP simples no mobile no fallback
+                if (!response.ok && response.status === 403) {
+                    console.log('[ResultScraper] 🔄 Ainda bloqueado. Tentando Fallback 2: HTTP (não-seguro)...');
+                    const httpUrl = url.replace('https://', 'http://');
                     try {
-                        await this.sleep(1500); // Mais um pequeno delay
-                        const mobileResponse = await fetch(mobileUrl, {
-                            headers: {
-                                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                                'Referer': 'https://www.google.com/'
-                            },
-                            signal: AbortSignal.timeout(10000)
-                        });
-
-                        console.log(`[ResultScraper] 📡 Status Mobile: ${mobileResponse.status}`);
-                        if (mobileResponse.ok) {
-                            const html = await mobileResponse.text();
-                            console.log(`[ResultScraper] ✅ Sucesso via Mobile! (${html.length} bytes)`);
-                            return this.parseResult(html, drawName, drawDate);
-                        }
+                        await this.sleep(2000);
+                        const httpResponse = await fetch(httpUrl, fetchOptions);
+                        console.log(`[ResultScraper] 📡 Status Fallback 2: ${httpResponse.status}`);
+                        if (httpResponse.ok) response = httpResponse;
                     } catch (e) {
-                        console.error('[ResultScraper] ❌ Falha no fallback mobile:', e);
+                        console.error('[ResultScraper] ❌ Erro no Fallback 2:', e);
                     }
                 }
+            }
+
+            if (!response.ok) {
+                console.error(`[ResultScraper] ❌ Falha definitiva após fallbacks: HTTP ${response.status}`);
                 return null;
             }
 
             const html = await response.text();
             console.log(`[ResultScraper] 📄 HTML recebido (${html.length} bytes)`);
 
-            // Log de detecção de bloqueio
             if (html.includes('Cloudflare') || html.includes('Access Denied') || html.includes('captcha') || html.includes('Acesso Bloqueado')) {
-                console.warn(`[ResultScraper] ⚠️ Possível detecção de bot/bloqueio detectada no HTML!`);
+                console.warn(`[ResultScraper] ⚠️ Possível detecção de bot detectada no HTML!`);
             }
 
             return this.parseResult(html, drawName, drawDate);
