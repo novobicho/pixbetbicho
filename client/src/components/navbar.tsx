@@ -60,36 +60,15 @@ export function Navbar() {
     navigate('/auth');
   };
 
-  // Use system primary color or default to blue
-  const primaryColor = systemSettings?.mainColor || '#2563eb';
-
-  // Debug: Log the color being used
-  console.log('Navbar - System Settings:', systemSettings);
-  console.log('Navbar - Primary Color:', primaryColor);
-
-  // Convert hex to RGB for gradient
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 37, g: 99, b: 235 }; // default blue
+  // Use CSS variables directly to avoid flickering
+  // The variables --primary and --primary-dark are set by initializeTheme() before hydration
+  const navStyle: React.CSSProperties = {
+    background: `linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary-dark)))`,
+    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
   };
-
-  const rgb = hexToRgb(primaryColor);
-  console.log('Navbar - RGB:', rgb);
-
-  const gradientStyle: React.CSSProperties = {
-    background: `linear-gradient(to right, rgb(${rgb.r}, ${rgb.g}, ${rgb.b}), rgb(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)}))`,
-    backgroundImage: `linear-gradient(to right, rgb(${rgb.r}, ${rgb.g}, ${rgb.b}), rgb(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)}))`,
-    backgroundColor: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`
-  };
-
-  console.log('Navbar - Gradient Style:', gradientStyle);
 
   return (
-    <nav style={{ ...gradientStyle, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)' }}>
+    <nav style={navStyle}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center gap-8">
