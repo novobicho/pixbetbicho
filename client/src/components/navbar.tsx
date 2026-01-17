@@ -43,7 +43,7 @@ function NavLink({ href, active, children, onClick, icon }: NavLinkProps) {
 }
 
 export function Navbar() {
-  const { user, logoutMutation } = useAuth();
+  const { user, logoutMutation, isLoading: authLoading } = useAuth();
   const [location, navigate] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -146,7 +146,13 @@ export function Navbar() {
 
           {/* Desktop Right Side */}
           <div className="hidden md:flex items-center gap-3">
-            {user ? (
+            {authLoading ? (
+              // Loading State - Placeholder sem piscar
+              <div className="flex items-center gap-3 opacity-50">
+                <div className="h-8 w-20 bg-white/20 rounded animate-pulse"></div>
+                <div className="h-8 w-20 bg-white/20 rounded animate-pulse"></div>
+              </div>
+            ) : user ? (
               <>
                 <div className="flex items-center gap-2">
                   <div className="text-sm bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg flex items-center text-white border border-white/30">
@@ -200,7 +206,9 @@ export function Navbar() {
           <div className="flex md:hidden items-center gap-2">
             {/* Mobile Right Side Actions */}
             <div className="flex items-center gap-2">
-              {user ? (
+              {authLoading ? (
+                <div className="h-7 w-16 bg-white/20 rounded animate-pulse"></div>
+              ) : user ? (
                 <>
                   <div className="text-xs bg-white/20 backdrop-blur-sm px-2 py-1.5 rounded-lg flex items-center text-white border border-white/30">
                     <span className="font-bold">R$ {user.balance.toFixed(2)}</span>
