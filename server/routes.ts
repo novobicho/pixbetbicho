@@ -3346,6 +3346,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (dbSettings.site_description) settings.siteDescription = dbSettings.site_description;
           if (dbSettings.logo_url) settings.logoUrl = dbSettings.logo_url;
           if (dbSettings.favicon_url) settings.faviconUrl = dbSettings.favicon_url;
+
+          // Mapeamento dos Banners
+          if (dbSettings.banner_desktop_url) settings.bannerDesktopUrl = dbSettings.banner_desktop_url;
+          if (dbSettings.banner_mobile_url) settings.bannerMobileUrl = dbSettings.banner_mobile_url;
+          if (dbSettings.banner_dashboard_url) settings.bannerDashboardUrl = dbSettings.banner_dashboard_url;
         }
 
         res.json(settings);
