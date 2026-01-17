@@ -333,9 +333,26 @@ export function MobileBetWizardNew({
       }
     },
     onError: (error: Error) => {
+      let errorMessage = error.message;
+
+      // Tentativa de extrair mensagem limpa se for resposta JSON da API
+      // O formato geralmente é "STATUS: { JSON }"
+      try {
+        if (errorMessage.includes("{") && errorMessage.includes("}")) {
+          // Extrair a parte JSON
+          const jsonPart = errorMessage.substring(errorMessage.indexOf("{"));
+          const errorObj = JSON.parse(jsonPart);
+          if (errorObj.message) {
+            errorMessage = errorObj.message;
+          }
+        }
+      } catch (e) {
+        console.log("Falha ao parsear erro de API:", e);
+      }
+
       // Verificar se o erro é de saldo insuficiente
-      if (error.message && error.message.includes("Saldo insuficiente")) {
-        console.log("Erro de saldo insuficiente detectado na API", error.message);
+      if (errorMessage.includes("Saldo insuficiente")) {
+        console.log("Erro de saldo insuficiente detectado na API", errorMessage);
         const currentAmount = formValues.amount;
 
         // Preparar dados da aposta para o diálogo de saldo insuficiente
@@ -395,18 +412,23 @@ export function MobileBetWizardNew({
         });
 
       } else {
-        // Usar ambos os sistemas para erro
+        // Verificar se é um aviso (ex: valor mínimo)
+        const isWarning = errorMessage.toLowerCase().includes("valor mínimo") ||
+          errorMessage.toLowerCase().includes("limite");
+
+        // Usar ambos os sistemas para erro/aviso
         toast({
-          title: "Erro ao Registrar Aposta",
-          description: error.message,
-          variant: "destructive",
+          title: isWarning ? "Atenção" : "Erro ao Registrar Aposta",
+          description: errorMessage,
+          variant: isWarning ? "default" : "destructive",
+          className: isWarning ? "border-yellow-500 bg-yellow-50" : "",
         });
 
-        // Toast personalizado para erros
+        // Toast personalizado
         customToast.addToast({
-          title: "Erro ao Registrar Aposta",
-          message: error.message,
-          type: "error",
+          title: isWarning ? "Atenção" : "Erro ao Registrar Aposta",
+          message: errorMessage,
+          type: isWarning ? "warning" : "error",
           duration: 5000
         });
       }
