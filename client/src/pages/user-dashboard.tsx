@@ -183,11 +183,10 @@ export default function UserDashboard() {
         {/* Abas de histórico */}
         <div id="history" className="bg-white rounded-xl shadow-md p-4 sm:p-6 mb-4">
           <Tabs defaultValue="bets" className="w-full">
-            <TabsList className="w-full grid grid-cols-4 mb-4">
+            <TabsList className="w-full grid grid-cols-3 mb-4">
               <TabsTrigger value="bets" className="text-sm sm:text-base">Apostas</TabsTrigger>
               <TabsTrigger value="transactions" className="text-sm sm:text-base">Transações</TabsTrigger>
               <TabsTrigger value="bonuses" className="text-sm sm:text-base">Bônus</TabsTrigger>
-              <TabsTrigger value="payments" className="text-sm sm:text-base">Pagamentos</TabsTrigger>
             </TabsList>
             <TabsContent value="bets" id="recent-bets">
               <RecentBets />
@@ -197,119 +196,6 @@ export default function UserDashboard() {
             </TabsContent>
             <TabsContent value="bonuses">
               <UserBonuses />
-            </TabsContent>
-            <TabsContent value="payments">
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">💳 Gateways de Pagamento</h3>
-                  <p className="text-muted-foreground mb-6">
-                    Escolha entre diferentes opções de depósito e saque disponíveis
-                  </p>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  {/* EZZEBANK Gateway */}
-                  <div className="border rounded-lg p-6 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">EZZEBANK</h4>
-                        <p className="text-sm text-muted-foreground">PIX instantâneo 24/7</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-green-600">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Processamento instantâneo
-                      </div>
-                      <div className="flex items-center gap-2 text-green-600">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Sem taxas adicionais
-                      </div>
-                      <div className="flex items-center gap-2 text-green-600">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Disponível 24/7
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <EzzebankDepositDialog
-                        trigger={
-                          <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
-                            Depositar
-                          </button>
-                        }
-                      />
-                      <EzzebankWithdrawalDialog
-                        userBalance={user?.balance || 0}
-                        trigger={
-                          <button className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
-                            Sacar
-                          </button>
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Gateway Existente (Pushin Pay) */}
-                  <div className="border rounded-lg p-6 space-y-4 opacity-75">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">Pushin Pay</h4>
-                        <p className="text-sm text-muted-foreground">Gateway tradicional</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-gray-500">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Processamento em horário comercial
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        onClick={() => setDepositOpen(true)}
-                        className="flex-1 bg-gray-400 hover:bg-gray-500 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Depositar
-                      </button>
-                      <button
-                        onClick={() => setWithdrawOpen(true)}
-                        className="flex-1 bg-gray-400 hover:bg-gray-500 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Sacar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-medium text-blue-900 mb-2">💡 Dica: EZZEBANK Recomendado</h4>
-                  <p className="text-sm text-blue-700">
-                    Para maior conveniência, recomendamos usar o EZZEBANK que oferece processamento instantâneo
-                    24 horas por dia, 7 dias por semana, sem taxas adicionais!
-                  </p>
-                </div>
-              </div>
             </TabsContent>
           </Tabs>
         </div>
