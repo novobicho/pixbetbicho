@@ -418,7 +418,6 @@ export const insertPaymentTransactionSchema = createInsertSchema(paymentTransact
     id: true,
     createdAt: true,
     updatedAt: true,
-    gatewayResponse: true,
   });
 
 export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
