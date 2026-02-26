@@ -9,13 +9,13 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   email: text("email"),
   name: text("name"),
-  // Removido: cpf: text("cpf").unique(),
+  cpf: text("cpf").unique(),
   balance: real("balance").default(0).notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
   blocked: boolean("blocked").default(false).notNull(),
   blockReason: text("block_reason"),
-  // Removido: defaultPixKey: text("default_pix_key"),
-  // Removido: defaultPixKeyType: text("default_pix_key_type"),
+  defaultPixKey: text("default_pix_key"),
+  defaultPixKeyType: text("default_pix_key_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -177,6 +177,7 @@ export const gameModes = pgTable("game_modes", {
   description: text("description"),
   odds: integer("odds").notNull(), // Stored in cents (e.g., 8000.00 = 800000)
   active: boolean("active").default(true).notNull(),
+  sortOrder: integer("sort_order"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -299,6 +300,7 @@ export const systemSettings = pgTable("system_settings", {
   signupBonusAmount: real("signup_bonus_amount").default(10).notNull(),
   signupBonusRollover: real("signup_bonus_rollover").default(3).notNull(),
   signupBonusExpiration: integer("signup_bonus_expiration").default(7).notNull(),
+  signupBonusBannerEnabled: boolean("signup_bonus_banner_enabled").default(true),
 
   // Configurações de bônus de primeiro depósito
   firstDepositBonusEnabled: boolean("first_deposit_bonus_enabled").default(false).notNull(),
@@ -307,6 +309,10 @@ export const systemSettings = pgTable("system_settings", {
   firstDepositBonusExpiration: integer("first_deposit_bonus_expiration").default(7).notNull(),
   firstDepositBonusPercentage: real("first_deposit_bonus_percentage").default(100).notNull(),
   firstDepositBonusMaxAmount: real("first_deposit_bonus_max_amount").default(200).notNull(),
+  firstDepositBonusBannerEnabled: boolean("first_deposit_bonus_banner_enabled").default(true),
+
+  // Configurações de apostas com bônus
+  allowBonusBets: boolean("allow_bonus_bets").default(true).notNull(),
 
   // Configurações de banners
   promotionalBannersEnabled: boolean("promotional_banners_enabled").default(false).notNull(),
