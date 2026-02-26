@@ -100,8 +100,8 @@ export function PaymentGatewayManagement() {
   const { toast } = useToast();
 
   // Query para obter todos os gateways de pagamento
-  const { 
-    data: gateways = [], 
+  const {
+    data: gateways = [],
     isLoading,
     isError,
     refetch
@@ -245,6 +245,7 @@ export function PaymentGatewayManagement() {
   const gatewayTypes = [
     { value: "pushinpay", label: "Pushin Pay" },
     { value: "ezzebank", label: "EZZEBANK (PIX)" },
+    { value: "codexpay", label: "CodexPay (PIX)" },
     { value: "mercadopago", label: "Mercado Pago" },
     { value: "pagseguro", label: "PagSeguro" },
     { value: "paypal", label: "PayPal" }
@@ -439,16 +440,16 @@ export function PaymentGatewayManagement() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {watchedType === 'ezzebank' ? 'Client ID' : 'API Key'}
+                        {['ezzebank', 'codexpay'].includes(watchedType) ? 'Client ID' : 'API Key'}
                       </FormLabel>
                       <FormControl>
-                        <Input 
+                        <Input
                           placeholder={
-                            watchedType === 'ezzebank' 
-                              ? 'Client ID da EZZEBANK' 
+                            watchedType === 'ezzebank' || watchedType === 'codexpay'
+                              ? `Client ID da ${watchedType === 'ezzebank' ? 'EZZEBANK' : 'CodexPay'}`
                               : 'Chave de API'
-                          } 
-                          {...field} 
+                          }
+                          {...field}
                         />
                       </FormControl>
                       <FormMessage />
@@ -462,16 +463,16 @@ export function PaymentGatewayManagement() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {watchedType === 'ezzebank' ? 'Client Secret' : 'Secret Key'}
+                        {['ezzebank', 'codexpay'].includes(watchedType) ? 'Client Secret' : 'Secret Key'}
                       </FormLabel>
                       <FormControl>
-                        <Input 
+                        <Input
                           placeholder={
-                            watchedType === 'ezzebank' 
-                              ? 'Client Secret da EZZEBANK' 
+                            watchedType === 'ezzebank' || watchedType === 'codexpay'
+                              ? `Client Secret da ${watchedType === 'ezzebank' ? 'EZZEBANK' : 'CodexPay'}`
                               : 'Chave secreta (opcional)'
-                          } 
-                          {...field} 
+                          }
+                          {...field}
                         />
                       </FormControl>
                       <FormMessage />
