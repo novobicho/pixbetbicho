@@ -36,13 +36,13 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { 
-  RefreshCw, 
-  ExternalLink, 
-  ArrowDownCircle, 
-  AlertCircle, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  RefreshCw,
+  ExternalLink,
+  ArrowDownCircle,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
   Timer,
   Clock,
   Copy
@@ -58,7 +58,7 @@ const withdrawFormSchema = z.object({
     .min(1, { message: "O valor mínimo é R$1,00" }),
   pixKey: z.string()
     .optional(),
-  pixKeyType: z.enum(["email", "phone", "random"], {
+  pixKeyType: z.enum(["cpf", "email", "phone", "random"], {
     required_error: "Selecione o tipo de chave"
   }).optional()
 });
@@ -67,6 +67,7 @@ type WithdrawFormValues = z.infer<typeof withdrawFormSchema>;
 
 // Tipos de chave PIX disponíveis
 const pixKeyTypes = [
+  { id: "cpf", name: "CPF" },
   { id: "email", name: "Email" },
   { id: "phone", name: "Telefone" },
   { id: "random", name: "Chave Aleatória" }
@@ -87,11 +88,11 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
   const [withdrawDetail, setWithdrawDetail] = useState<any>(null);
   const { toast } = useToast();
   const { user } = useAuth();
-  
+
   // Gerenciar estado aberto/fechado
   const isOpen = controlledOpen !== undefined ? controlledOpen : open;
   const setIsOpen = onOpenChange || setOpen;
-  
+
   // Reseta o estado quando o diálogo é fechado
   useEffect(() => {
     if (!isOpen) {
@@ -101,7 +102,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
       setWithdrawAmount("");
     }
   }, [isOpen]);
-  
+
   // Buscar retiradas pendentes do usuário
   const { data: withdrawals = [], refetch: refetchWithdrawals } = useQuery({
     queryKey: ["/api/withdrawals"],
@@ -111,7 +112,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
     },
     enabled: isOpen,
   });
-  
+
   // Buscar as configurações do sistema para verificar se saques estão permitidos
   const { data: systemSettings } = useQuery({
     queryKey: ["/api/system-settings"],
@@ -134,16 +135,21 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
 
   // Atualizar os campos do formulário quando o usuário for carregado
   useEffect(() => {
-    if (user && user.email) {
-      form.setValue("pixKey", user.email);
-      form.setValue("pixKeyType", "email");
+    if (user) {
+      if (user.defaultPixKey) {
+        form.setValue("pixKey", user.defaultPixKey);
+        form.setValue("pixKeyType", "cpf" as any);
+      } else if (user.cpf) {
+        form.setValue("pixKey", user.cpf);
+        form.setValue("pixKeyType", "cpf" as any);
+      }
     }
   }, [user, form]);
-  
+
   // Mutation para criar uma solicitação de saque
   const withdrawMutation = useMutation({
     mutationFn: async (data: WithdrawFormValues) => {
-      const res = await apiRequest("POST", "/api/withdrawals", { 
+      const res = await apiRequest("POST", "/api/withdrawals", {
         amount: data.amount,
         pixKey: data.pixKey,
         pixKeyType: data.pixKeyType
@@ -153,21 +159,21 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
     onSuccess: (data) => {
       toast({
         title: "Solicitação de Saque",
-        description: data.status === "approved" 
-          ? "Seu saque foi aprovado automaticamente!" 
+        description: data.status === "approved"
+          ? "Seu saque foi aprovado automaticamente!"
           : "Sua solicitação de saque foi registrada e está aguardando aprovação.",
       });
-      
+
       // Guardar detalhes da retirada e alterar o estado
       console.log("Withdrawal response:", data);
       setWithdrawDetail(data);
       setWithdrawStatus('success');
       form.reset();
-      
+
       // Atualizar os dados do usuário e histórico de saques
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/withdrawals"] });
-      
+
       // Chamar callback de sucesso se existir
       if (onSuccess) {
         onSuccess();
@@ -189,31 +195,32 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
   // Handler para o envio do formulário
   const onSubmit = (values: WithdrawFormValues) => {
     setIsSubmitting(true);
-    
-    // Verificar se o usuário tem email configurado
-    if (!user?.email) {
+
+    // Verificar se o usuário tem chave PIX configurada
+    const pixKey = user?.defaultPixKey || user?.cpf;
+    if (!pixKey) {
       toast({
-        title: "Email não configurado",
-        description: "Você precisa configurar seu email nas configurações da conta antes de solicitar um saque.",
+        title: "Chave PIX não configurada",
+        description: "Você precisa configurar seu CPF ou chave PIX nas configurações da conta antes de solicitar um saque.",
         variant: "destructive",
       });
       setIsSubmitting(false);
       return;
     }
-    
+
     // Garantir que o valor está no formato correto
     let amount = values.amount;
     console.log(`Valor original no formulário: ${amount}, tipo: ${typeof amount}`);
-    
+
     // Se não tivermos um valor, usar o valor parseado do campo de texto
     if (amount === undefined || amount === null) {
       amount = parseMoneyValue(withdrawAmount);
       console.log(`Usando valor do campo de texto: ${amount}`);
     }
-    
+
     // Garantir que é um número com 2 casas decimais
     const finalAmount = parseFloat(Number(amount).toFixed(2));
-    
+
     // Verificar se o usuário tem saldo suficiente
     if (user && finalAmount > user.balance) {
       toast({
@@ -224,15 +231,15 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
       setIsSubmitting(false);
       return;
     }
-    
-    // Usar sempre o email do usuário como chave PIX
+
+    // Usar a chave PIX padrão (CPF)
     console.log(`Valor final enviado para API: ${finalAmount}, tipo: ${typeof finalAmount}`);
-    console.log(`Email do usuário (chave PIX): ${user.email}`);
-    
+    console.log(`Chave PIX do usuário: ${pixKey}`);
+
     withdrawMutation.mutate({
       amount: finalAmount,
-      pixKey: user.email,
-      pixKeyType: "email"
+      pixKey: pixKey,
+      pixKeyType: "cpf" as any
     });
   };
 
@@ -272,10 +279,10 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
   // Converter string de valor para número (considerando formato brasileiro)
   const parseMoneyValue = (value: string): number => {
     if (!value) return 0;
-    
+
     // Limpar formatação, manter apenas números e vírgula
     const cleanValue = value.replace(/[^\d,]/g, "");
-    
+
     // Verificar se o valor tem vírgula
     if (cleanValue.includes(",")) {
       // Se tiver vírgula, converter de formato brasileiro para número
@@ -283,7 +290,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
       const intPart = parts[0] || "0";
       // Garantir que a parte decimal tenha o tamanho correto
       const decPart = parts.length > 1 ? parts[1].substring(0, 2).padEnd(2, '0') : "00";
-      
+
       // Montar o número com a formatação correta para parseFloat
       const result = parseFloat(`${intPart}.${decPart}`);
       console.log(`Convertendo ${value} (limpo: ${cleanValue}) para número: ${result}`);
@@ -310,7 +317,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
         </Alert>
       );
     }
-    
+
     // Status de sucesso - saque solicitado
     if (withdrawStatus === 'success') {
       return (
@@ -322,19 +329,19 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
                 {withdrawDetail?.status === "approved"
                   ? "Saque Aprovado!"
                   : withdrawDetail?.status === "processing"
-                  ? "Saque em Processamento!"
-                  : "Solicitação Recebida!"}
+                    ? "Saque em Processamento!"
+                    : "Solicitação Recebida!"}
               </h3>
               <p className="text-xs text-muted-foreground">
                 {withdrawDetail?.status === "approved"
                   ? "Valor debitado da sua conta"
                   : withdrawDetail?.status === "processing"
-                  ? "Processando pagamento PIX"
-                  : "Aguardando aprovação do administrador"}
+                    ? "Processando pagamento PIX"
+                    : "Aguardando aprovação do administrador"}
               </p>
             </div>
           </div>
-          
+
           <Card className="w-full">
             <CardHeader className="py-2 px-3">
               <CardTitle className="text-sm">Detalhes do Saque</CardTitle>
@@ -352,18 +359,18 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Status:</span>
-                  <Badge 
+                  <Badge
                     variant={
-                      withdrawDetail?.status === "approved" ? "success" : 
-                      withdrawDetail?.status === "processing" ? "warning" : 
-                      "outline"
+                      withdrawDetail?.status === "approved" ? "success" :
+                        withdrawDetail?.status === "processing" ? "warning" :
+                          "outline"
                     }
                     className="text-[10px] h-5"
                   >
-                    {withdrawDetail?.status === "approved" ? "Aprovado" : 
-                     withdrawDetail?.status === "processing" ? "Em Processamento" : 
-                     withdrawDetail?.status === "rejected" ? "Rejeitado" : 
-                     "Pendente"}
+                    {withdrawDetail?.status === "approved" ? "Aprovado" :
+                      withdrawDetail?.status === "processing" ? "Em Processamento" :
+                        withdrawDetail?.status === "rejected" ? "Rejeitado" :
+                          "Pendente"}
                   </Badge>
                 </div>
                 <div className="flex justify-between">
@@ -379,7 +386,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Data:</span>
                   <span className="font-medium">
-                    {withdrawDetail?.requestedAt 
+                    {withdrawDetail?.requestedAt
                       ? new Date(withdrawDetail.requestedAt).toLocaleDateString('pt-BR')
                       : new Date().toLocaleDateString('pt-BR')}
                   </span>
@@ -387,8 +394,8 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
               </div>
             </CardContent>
           </Card>
-          
-          <Button 
+
+          <Button
             onClick={() => {
               setWithdrawStatus('idle');
               setWithdrawDetail(null);
@@ -402,7 +409,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
         </div>
       );
     }
-    
+
     // Status de erro
     if (withdrawStatus === 'error') {
       return (
@@ -416,7 +423,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
               </p>
             </div>
           </div>
-          
+
           <Alert variant="destructive" className="mt-2">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle className="text-xs font-medium">Falha na transação</AlertTitle>
@@ -424,8 +431,8 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
               Verifique se você tem saldo suficiente e tente novamente.
             </AlertDescription>
           </Alert>
-          
-          <Button 
+
+          <Button
             onClick={() => {
               setWithdrawStatus('idle');
               form.reset();
@@ -438,7 +445,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
         </div>
       );
     }
-    
+
     // Status inicial - formulário de saque
     return (
       <Form {...form}>
@@ -478,28 +485,28 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
 
           {showKeyboard && (
             <div className="mb-4">
-              <NumericKeyboard 
-                onKeyPress={handleKeyPress} 
-                withComma={true} 
+              <NumericKeyboard
+                onKeyPress={handleKeyPress}
+                withComma={true}
                 compact={true}
               />
             </div>
           )}
 
-          {user && user.email ? (
-            // Mostrar a chave PIX cadastrada de maneira mais compacta
+          {user && (user.defaultPixKey || user.cpf) ? (
+            // Mostrar a chave PIX cadastrada (preferencialmente o CPF)
             <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-3">
               <div className="flex items-center justify-between mb-1">
                 <h3 className="text-xs font-medium">Chave PIX para pagamento</h3>
-                <Button 
-                  type="button" 
-                  variant="ghost" 
+                <Button
+                  type="button"
+                  variant="ghost"
                   size="sm"
                   className="h-6 px-2 text-xs"
                   onClick={() => {
                     // Abrir o diálogo de configurações
-                    const event = new CustomEvent('openUserSettings', { 
-                      detail: { defaultTab: 'payments' } 
+                    const event = new CustomEvent('openUserSettings', {
+                      detail: { defaultTab: 'payments' }
                     });
                     window.dispatchEvent(event);
                     // Fechar o diálogo de saque
@@ -509,22 +516,22 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
                   Alterar
                 </Button>
               </div>
-              
+
               <div className="flex items-center text-xs">
                 <span className="text-muted-foreground mr-1">
-                  Email:
+                  CPF:
                 </span>
-                <span className="font-medium truncate max-w-[140px]">{user.email}</span>
-                <Button 
-                  type="button" 
-                  size="icon" 
-                  variant="ghost" 
+                <span className="font-medium truncate max-w-[140px]">{user.defaultPixKey || user.cpf}</span>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
                   className="h-5 w-5 ml-1"
                   onClick={() => {
-                    navigator.clipboard.writeText(user.email || "");
+                    navigator.clipboard.writeText(user.defaultPixKey || user.cpf || "");
                     toast({
-                      title: "Email copiado!",
-                      description: "O email foi copiado para a área de transferência."
+                      title: "Copiado!",
+                      description: "A chave PIX foi copiada para a área de transferência."
                     });
                   }}
                 >
@@ -543,15 +550,15 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
                     Configure uma chave PIX para saques
                   </p>
                 </div>
-                <Button 
-                  type="button" 
-                  variant="outline" 
+                <Button
+                  type="button"
+                  variant="outline"
                   size="sm"
                   className="h-7 text-xs border-amber-300 bg-amber-100 hover:bg-amber-200"
                   onClick={() => {
                     // Abrir o diálogo de configurações
-                    const event = new CustomEvent('openUserSettings', { 
-                      detail: { defaultTab: 'payments' } 
+                    const event = new CustomEvent('openUserSettings', {
+                      detail: { defaultTab: 'payments' }
                     });
                     window.dispatchEvent(event);
                     // Fechar o diálogo de saque
@@ -572,7 +579,7 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
                   {withdrawals.filter((w: any) => w.status === "pending").length}
                 </Badge>
               </div>
-              
+
               <div className="max-h-24 overflow-y-auto mt-1">
                 {withdrawals
                   .filter((w: any) => w.status === "pending")
@@ -596,16 +603,16 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
           )}
 
           <DialogFooter>
-            <Button 
+            <Button
               type="button"
-              variant="ghost" 
+              variant="ghost"
               onClick={() => setIsOpen(false)}
               disabled={isSubmitting}
             >
               Cancelar
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isSubmitting || !parseMoneyValue(withdrawAmount)}
             >
               {isSubmitting ? (
@@ -631,16 +638,16 @@ export function WithdrawDialog({ onSuccess, open: controlledOpen, onOpenChange }
         <DialogHeader className="pb-3 sm:pb-4">
           <DialogTitle className="text-lg leading-tight">
             {withdrawStatus === 'success' ? 'Saque Solicitado' :
-             withdrawStatus === 'error' ? 'Erro no Saque' :
-             'Solicitar Saque'}
+              withdrawStatus === 'error' ? 'Erro no Saque' :
+                'Solicitar Saque'}
           </DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
             {withdrawStatus === 'success' ? 'Sua solicitação de saque foi processada.' :
-             withdrawStatus === 'error' ? 'Houve um problema com sua solicitação.' :
-             'Informe o valor para saque via PIX.'}
+              withdrawStatus === 'error' ? 'Houve um problema com sua solicitação.' :
+                'Informe o valor para saque via PIX.'}
           </DialogDescription>
         </DialogHeader>
-        
+
         {renderContent()}
       </DialogContent>
     </Dialog>

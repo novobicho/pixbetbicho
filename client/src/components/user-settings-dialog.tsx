@@ -46,11 +46,12 @@ import { Input } from "@/components/ui/input";
 
 // Schema de validação para o formulário de chave PIX
 const pixKeyFormSchema = z.object({
-  pixKeyType: z.enum(["email"], {
+  pixKeyType: z.enum(["cpf"], {
     required_error: "Selecione o tipo de chave PIX",
   }),
   pixKey: z.string()
-    .email({ message: "Email inválido" })
+    .min(11, "Chave PIX deve ser um CPF válido")
+    .max(14, "Chave PIX inválida")
 });
 
 type PixKeyFormValues = z.infer<typeof pixKeyFormSchema>;
@@ -69,16 +70,21 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
   const pixKeyForm = useForm<PixKeyFormValues>({
     resolver: zodResolver(pixKeyFormSchema),
     defaultValues: {
-      pixKeyType: "email",
-      pixKey: user?.defaultPixKey || "",
+      pixKeyType: "cpf",
+      pixKey: user?.defaultPixKey || user?.cpf || "",
     },
   });
 
   // Atualizar formulário quando o usuário for carregado
   useEffect(() => {
-    if (user && user.email) {
-      pixKeyForm.setValue("pixKey", user.email);
-      pixKeyForm.setValue("pixKeyType", "email");
+    if (user) {
+      if (user.defaultPixKey) {
+        pixKeyForm.setValue("pixKey", user.defaultPixKey);
+        pixKeyForm.setValue("pixKeyType", "cpf");
+      } else if (user.cpf) {
+        pixKeyForm.setValue("pixKey", user.cpf);
+        pixKeyForm.setValue("pixKeyType", "cpf");
+      }
     }
   }, [user, pixKeyForm]);
 
@@ -133,7 +139,7 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
               Ajuste as configurações da sua conta.
             </DialogDescription>
           </DialogHeader>
-          
+
           <Tabs defaultValue="account" className="mt-4">
             <TabsList className="grid grid-cols-3">
               <TabsTrigger value="account">Conta</TabsTrigger>
@@ -143,7 +149,7 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
               </TabsTrigger>
               <TabsTrigger value="notifications">Notificações</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="account" className="space-y-4 mt-4">
               <div className="rounded-md bg-gray-50 p-4 border border-gray-200">
                 <div className="flex items-center space-x-4">
@@ -160,12 +166,12 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                   </div>
                 </div>
               </div>
-              
+
               <Separator />
-              
+
               <div className="space-y-2">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   className="w-full justify-between"
                   onClick={() => setChangePasswordOpen(true)}
                 >
@@ -175,9 +181,9 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                   </div>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                
-                <Button 
-                  variant="ghost" 
+
+                <Button
+                  variant="ghost"
                   className="w-full justify-between text-destructive hover:text-destructive hover:bg-destructive/10"
                   onClick={handleLogout}
                   disabled={logoutMutation.isPending}
@@ -190,7 +196,7 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                 </Button>
               </div>
             </TabsContent>
-            
+
             {/* Aba de Pagamentos - Configuração da Chave PIX */}
             <TabsContent value="payments" className="space-y-4 mt-4">
               <div className="rounded-md bg-gray-50 p-4 border border-gray-200 mb-4">
@@ -222,7 +228,7 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="cpf">CPF</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -235,12 +241,11 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                       name="pixKey"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Email para recebimento</FormLabel>
+                          <FormLabel>CPF do titular</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="seu.email@exemplo.com"
+                              placeholder="000.000.000-00"
                               {...field}
-                              type="email"
                             />
                           </FormControl>
                           <FormMessage />
@@ -264,7 +269,7 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                 </Form>
               </div>
             </TabsContent>
-            
+
             <TabsContent value="notifications" className="space-y-4 mt-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -274,17 +279,17 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                   </div>
                   <div className="flex items-center">
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        value="" 
-                        className="sr-only peer" 
-                        defaultChecked 
+                      <input
+                        type="checkbox"
+                        value=""
+                        className="sr-only peer"
+                        defaultChecked
                       />
                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                     </label>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Bell className="h-4 w-4" />
@@ -292,10 +297,10 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
                   </div>
                   <div className="flex items-center">
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        value="" 
-                        className="sr-only peer" 
+                      <input
+                        type="checkbox"
+                        value=""
+                        className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                     </label>
@@ -306,10 +311,10 @@ export function UserSettingsDialog({ open, onOpenChange }: UserSettingsDialogPro
           </Tabs>
         </DialogContent>
       </Dialog>
-      
-      <ChangePasswordDialog 
-        open={changePasswordOpen} 
-        onOpenChange={setChangePasswordOpen} 
+
+      <ChangePasswordDialog
+        open={changePasswordOpen}
+        onOpenChange={setChangePasswordOpen}
       />
     </>
   );
