@@ -45,6 +45,7 @@ export interface User {
   name?: string;
   balance: number;
   isAdmin: boolean;
+  cpf?: string;
   defaultPixKey?: string;
   defaultPixKeyType?: string;
   createdAt: string;
