@@ -569,43 +569,57 @@ export function DepositDialog({
                   <TabsTrigger value="code">Código PIX</TabsTrigger>
                 </TabsList>
                 <TabsContent value="qrcode" className="mt-4">
-                  <div className="flex flex-col items-center justify-center space-y-4">
-                    {transactionDetail?.paymentDetails?.qr_code_base64 ? (
-                      <>
-                        <div className="border p-2 rounded-md bg-white">
-                          <img
-                            src={transactionDetail.paymentDetails.qr_code_base64.startsWith('data:')
-                              ? transactionDetail.paymentDetails.qr_code_base64
-                              : `data:image/png;base64,${transactionDetail.paymentDetails.qr_code_base64}`}
-                            alt="QR Code PIX"
-                            className="w-48 h-48"
-                          />
+                  {(() => {
+                    const pixCode = transactionDetail?.paymentDetails?.qr_code ||
+                      transactionDetail?.pixCopyPasteCode ||
+                      transactionDetail?.payment?.qrCode;
+
+                    const qrCodeBase64 = transactionDetail?.paymentDetails?.qr_code_base64 ||
+                      transactionDetail?.payment?.qrCodeImage; // Nome comum em outros gateways
+
+                    if (qrCodeBase64) {
+                      return (
+                        <>
+                          <div className="border p-2 rounded-md bg-white">
+                            <img
+                              src={qrCodeBase64.startsWith('data:')
+                                ? qrCodeBase64
+                                : `data:image/png;base64,${qrCodeBase64}`}
+                              alt="QR Code PIX"
+                              className="w-48 h-48"
+                            />
+                          </div>
+                          <div className="text-sm text-center text-muted-foreground">
+                            Escaneie o QR Code com o aplicativo do seu banco
+                          </div>
+                        </>
+                      );
+                    } else if (pixCode && pixCode.startsWith('000201')) {
+                      // É um código PIX EMV, vamos gerar o QR Code via API pública
+                      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`;
+                      return (
+                        <>
+                          <div className="border p-4 rounded-md bg-white box-content">
+                            <img
+                              src={qrUrl}
+                              alt="QR Code PIX"
+                              className="w-48 h-48"
+                            />
+                          </div>
+                          <div className="text-sm text-center text-muted-foreground">
+                            Escaneie o QR Code com o aplicativo do seu banco
+                          </div>
+                        </>
+                      );
+                    } else {
+                      return (
+                        <div className="flex flex-col items-center justify-center py-4">
+                          <RefreshCw className="h-8 w-8 animate-spin text-primary mb-2" />
+                          <span className="text-sm text-muted-foreground text-center">Aguardando dados do pagamento...</span>
                         </div>
-                        <div className="text-sm text-center text-muted-foreground">
-                          Escaneie o QR Code com o aplicativo do seu banco
-                        </div>
-                      </>
-                    ) : transactionDetail?.payment?.qrCode ? (
-                      <>
-                        <div className="border p-2 rounded-md bg-white">
-                          <img
-                            src={transactionDetail.payment.qrCode.startsWith('data:')
-                              ? transactionDetail.payment.qrCode
-                              : `data:image/png;base64,${transactionDetail.payment.qrCode}`}
-                            alt="QR Code PIX"
-                            className="w-48 h-48"
-                          />
-                        </div>
-                        <div className="text-sm text-center text-muted-foreground">
-                          Escaneie o QR Code com o aplicativo do seu banco
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex justify-center py-4">
-                        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-                      </div>
-                    )}
-                  </div>
+                      );
+                    }
+                  })()}
                 </TabsContent>
                 <TabsContent value="code" className="mt-4">
                   <div className="flex flex-col space-y-4">
@@ -621,7 +635,10 @@ export function DepositDialog({
                         variant="secondary"
                         className="absolute right-2 top-2"
                         onClick={() => {
-                          const pixCode = transactionDetail?.paymentDetails?.qr_code || transactionDetail?.pixCopyPasteCode;
+                          const pixCode = transactionDetail?.paymentDetails?.qr_code ||
+                            transactionDetail?.pixCopyPasteCode ||
+                            transactionDetail?.payment?.qrCode;
+
                           if (pixCode) {
                             navigator.clipboard.writeText(pixCode);
                             toast({
@@ -630,7 +647,7 @@ export function DepositDialog({
                             });
                           }
                         }}
-                        disabled={!(transactionDetail?.paymentDetails?.qr_code || transactionDetail?.pixCopyPasteCode)}
+                        disabled={!(transactionDetail?.paymentDetails?.qr_code || transactionDetail?.pixCopyPasteCode || transactionDetail?.payment?.qrCode)}
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
@@ -673,7 +690,11 @@ export function DepositDialog({
           <div className="flex flex-col sm:flex-row gap-2 mt-4 w-full justify-center">
             <Button
               variant="outline"
-              onClick={() => window.open(transactionDetail?.qrCodeUrl, "_blank")}
+              onClick={() => {
+                const url = transactionDetail?.qrCodeUrl || transactionDetail?.payment?.qrCodeUrl;
+                if (url) window.open(url, "_blank");
+              }}
+              disabled={!(transactionDetail?.qrCodeUrl || transactionDetail?.payment?.qrCodeUrl)}
             >
               <ExternalLink className="h-4 w-4 mr-2" />
               Abrir QR Code
