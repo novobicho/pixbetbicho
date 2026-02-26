@@ -2733,50 +2733,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/user/pix-key", requireAuth, async (req, res) => {
     try {
       const userId = req.user!.id;
-      const { pixKey, pixKeyType } = req.body;
+      let { pixKey, pixKeyType } = req.body;
 
       // Validação básica
-      if (!pixKey || !pixKeyType) {
-        return res.status(400).json({ message: "Chave PIX e tipo são obrigatórios" });
+      if (!pixKey) {
+        return res.status(400).json({ message: "Chave PIX é obrigatória" });
       }
 
-      // Validação do tipo de chave PIX
-      const validTypes = ["cpf", "email", "phone", "random"];
-      if (!validTypes.includes(pixKeyType)) {
-        return res.status(400).json({ message: "Tipo de chave PIX inválido" });
+      // Forçar tipo CPF se não for enviado ou se o usuário quiser restringir
+      if (!pixKeyType) pixKeyType = "cpf";
+
+      // Validação do tipo de chave PIX - Restringindo a CPF conforme solicitado
+      if (pixKeyType !== "cpf") {
+        return res.status(400).json({ message: "Atualmente apenas chaves PIX do tipo CPF são aceitas" });
       }
 
-      // Validação específica para cada tipo de chave
-      if (pixKeyType === "cpf" && !/^\d{3}\.\d{3}\.\d{3}-\d{2}$|^\d{11}$/.test(pixKey)) {
-        return res.status(400).json({ message: "Formato de CPF inválido" });
+      // Limpar CPF (apenas números)
+      const cleanCpf = pixKey.replace(/\D/g, '');
+      if (cleanCpf.length !== 11) {
+        return res.status(400).json({ message: "CPF inválido. Insira os 11 dígitos." });
       }
 
-      if (pixKeyType === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pixKey)) {
-        return res.status(400).json({ message: "Formato de e-mail inválido" });
-      }
-
-      if (pixKeyType === "phone" && !/^(\+\d{2})?\s*(\(\d{2}\))?\s*\d{4,5}-?\d{4}$/.test(pixKey)) {
-        return res.status(400).json({ message: "Formato de telefone inválido" });
-      }
-
-      // Atualizar o email do usuário como chave PIX
-      console.log(`Atualizando email do usuário ${userId} para uso como chave PIX: ${pixKey}`);
+      // Atualizar o cadastro do usuário
+      console.log(`Atualizando chave PIX do usuário ${userId} para CPF: ${pixKey}`);
       const updatedUser = await storage.updateUser(userId, {
-        email: pixKey
+        defaultPixKey: pixKey,
+        defaultPixKeyType: "cpf",
+        // Também atualizar o campo CPF principal se estiver vazio
+        ...(req.user!.cpf ? {} : { cpf: cleanCpf })
       });
 
       if (!updatedUser) {
-        return res.status(500).json({ message: "Erro ao atualizar chave PIX" });
+        return res.status(500).json({ message: "Erro ao atualizar cadastro" });
       }
 
       res.status(200).json({
-        message: "Chave PIX atualizada com sucesso",
-        pixKey,
-        pixKeyType
+        message: "Chave PIX (CPF) configurada com sucesso",
+        pixKey: updatedUser.defaultPixKey,
+        pixKeyType: updatedUser.defaultPixKeyType
       });
     } catch (error) {
       console.error("Erro ao atualizar chave PIX:", error);
-      res.status(500).json({ message: "Erro ao atualizar chave PIX" });
+      res.status(500).json({ message: "Erro interno ao salvar chave PIX" });
     }
   });
 
@@ -2871,7 +2869,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return {
           ...userWithoutPassword,
           bonusBalance: parseFloat(user.bonus_balance) || 0,
-          blocked: user.blocked || false
+          blocked: user.blocked || false,
+          isAdmin: user.is_admin,
+          defaultPixKey: user.default_pix_key,
+          defaultPixKeyType: user.default_pix_key_type,
+          createdAt: user.created_at
         };
       });
 
@@ -7304,7 +7306,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         user: {
           ...user,
-          bonusBalance: parseFloat(user.bonus_balance) || 0
+          isAdmin: user.is_admin,
+          bonusBalance: parseFloat(user.bonus_balance) || 0,
+          defaultPixKey: user.default_pix_key,
+          defaultPixKeyType: user.default_pix_key_type,
+          createdAt: user.created_at
         },
         bets: betsQuery.rows.map(bet => ({
           ...bet,

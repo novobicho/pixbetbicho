@@ -72,6 +72,11 @@ interface SystemSettings {
 
   // Configurações de banners
   promotionalBannersEnabled: boolean;
+  bannerDesktopUrl?: string;
+  bannerMobileUrl?: string;
+  bannerDashboardUrl?: string;
+  signupBonusBannerEnabled?: boolean;
+  firstDepositBonusBannerEnabled?: boolean;
 }
 
 export interface IStorage {
@@ -4198,6 +4203,7 @@ export class DatabaseStorage implements IStorage {
       if ('favicon_url' in row) settings.faviconUrl = row.favicon_url;
       if ('banner_desktop_url' in row) settings.bannerDesktopUrl = row.banner_desktop_url;
       if ('banner_mobile_url' in row) settings.bannerMobileUrl = row.banner_mobile_url;
+      if ('banner_dashboard_url' in row) settings.bannerDashboardUrl = row.banner_dashboard_url;
       if ('signup_bonus_banner_enabled' in row) settings.signupBonusBannerEnabled = Boolean(row.signup_bonus_banner_enabled);
       if ('first_deposit_bonus_banner_enabled' in row) settings.firstDepositBonusBannerEnabled = Boolean(row.first_deposit_bonus_banner_enabled);
 
@@ -4416,6 +4422,7 @@ export class DatabaseStorage implements IStorage {
       addColumn('promotional_banners_enabled', 'promotionalBannersEnabled', settings.promotionalBannersEnabled === true);
       addColumn('banner_desktop_url', 'bannerDesktopUrl', settings.bannerDesktopUrl || '/img/banner-desktop.jpg');
       addColumn('banner_mobile_url', 'bannerMobileUrl', settings.bannerMobileUrl || '/img/banner-mobile.jpg');
+      addColumn('banner_dashboard_url', 'bannerDashboardUrl', settings.bannerDashboardUrl || '/img/banner-dashboard.jpg');
       addColumn('signup_bonus_banner_enabled', 'signupBonusBannerEnabled', settings.signupBonusBannerEnabled === true);
       addColumn('first_deposit_bonus_banner_enabled', 'firstDepositBonusBannerEnabled', settings.firstDepositBonusBannerEnabled === true);
 
@@ -4884,18 +4891,25 @@ export class DatabaseStorage implements IStorage {
 
   async getWithdrawal(id: number): Promise<Withdrawal | undefined> {
     try {
-      // Usar SQL bruto para evitar problemas com colunas ausentes
-      const withdrawalResult = await db.execute(
-        `SELECT w.id, w.user_id as "userId", w.amount, w.status, w.pix_key as "pixKey", 
-                w.pix_key_type as "pixKeyType", w.requested_at as "requestedAt", 
-                w.processed_at as "processedAt", w.processed_by as "processedBy", 
-                w.rejection_reason as "rejectionReason", w.notes,
-                u.username, u.email as "userEmail"
-         FROM withdrawals w
-         LEFT JOIN users u ON w.user_id = u.id
-         WHERE w.id = $1`,
-        [id]
-      );
+      const withdrawalResult = await db
+        .select({
+          id: withdrawals.id,
+          userId: withdrawals.userId,
+          amount: withdrawals.amount,
+          status: withdrawals.status,
+          pixKey: withdrawals.pixKey,
+          pixKeyType: withdrawals.pixKeyType,
+          requestedAt: withdrawals.requestedAt,
+          processedAt: withdrawals.processedAt,
+          processedBy: withdrawals.processedBy,
+          rejectionReason: withdrawals.rejectionReason,
+          notes: withdrawals.notes,
+          username: users.username,
+          userEmail: users.email
+        })
+        .from(withdrawals)
+        .leftJoin(users, eq(withdrawals.userId, users.id))
+        .where(eq(withdrawals.id, id));
 
       if (!withdrawalResult || withdrawalResult.length === 0) {
         return undefined;
@@ -4935,15 +4949,11 @@ export class DatabaseStorage implements IStorage {
         return [];
       }
 
-      // Usar SQL bruto para evitar problemas com colunas ausentes
-      const withdrawalQuery = await db.execute(
-        `SELECT id, user_id, amount, status, pix_key, pix_key_type, 
-                requested_at, processed_at, processed_by, rejection_reason, notes 
-         FROM withdrawals 
-         WHERE user_id = $1 
-         ORDER BY requested_at DESC`,
-        [userId]
-      );
+      const withdrawalQuery = await db
+        .select()
+        .from(withdrawals)
+        .where(eq(withdrawals.userId, userId))
+        .orderBy(desc(withdrawals.requestedAt));
 
       // Para cada saque, buscar informações adicionais
       const result = await Promise.all(withdrawalQuery.map(async (withdrawal) => {
@@ -4975,21 +4985,30 @@ export class DatabaseStorage implements IStorage {
 
   async getAllWithdrawals(status?: WithdrawalStatus): Promise<Withdrawal[]> {
     try {
-      // Usar SQL bruto para evitar problemas com colunas ausentes
-      let sqlQuery = `
-        SELECT w.id, w.user_id as "userId", w.amount, w.status, w.pix_key as "pixKey", 
-               w.pix_key_type as "pixKeyType", w.requested_at as "requestedAt", 
-               w.processed_at as "processedAt", w.processed_by as "processedBy", 
-               w.rejection_reason as "rejectionReason", w.notes,
-               u.username, u.email as "userEmail"
-        FROM withdrawals w
-        LEFT JOIN users u ON w.user_id = u.id
-        ${status ? 'WHERE w.status = $1' : ''}
-        ORDER BY w.requested_at DESC
-      `;
+      let query = db
+        .select({
+          id: withdrawals.id,
+          userId: withdrawals.userId,
+          amount: withdrawals.amount,
+          status: withdrawals.status,
+          pixKey: withdrawals.pixKey,
+          pixKeyType: withdrawals.pixKeyType,
+          requestedAt: withdrawals.requestedAt,
+          processedAt: withdrawals.processedAt,
+          processedBy: withdrawals.processedBy,
+          rejectionReason: withdrawals.rejectionReason,
+          notes: withdrawals.notes,
+          username: users.username,
+          userEmail: users.email
+        })
+        .from(withdrawals)
+        .leftJoin(users, eq(withdrawals.userId, users.id));
 
-      // Executar a consulta
-      const withdrawalResult = await db.execute(sqlQuery, status ? [status] : []);
+      if (status) {
+        query = query.where(eq(withdrawals.status, status)) as any;
+      }
+
+      const withdrawalResult = await query.orderBy(desc(withdrawals.requestedAt));
 
       // Para cada saque, buscar informações adicionais do admin
       const result = await Promise.all(withdrawalResult.map(async (withdrawal: any) => {
