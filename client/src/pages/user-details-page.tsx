@@ -19,13 +19,13 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
 } from "@/components/ui/dialog";
 
 interface UserWithBonusBalance extends User {
@@ -143,7 +143,7 @@ export default function UserDetailsPage() {
       email: userDetails.user.email,
       name: userDetails.user.name,
       cpf: userDetails.user.cpf,
-      pixKey: userDetails.user.pixKey,
+      defaultPixKey: userDetails.user.defaultPixKey,
     });
     setEditDialogOpen(true);
   };
@@ -163,7 +163,7 @@ export default function UserDetailsPage() {
 
   const handleBlockUser = () => {
     if (!userDetails) return;
-    
+
     if (userDetails.user.blocked) {
       // Desbloquear
       blockMutation.mutate({ blocked: false });
@@ -217,8 +217,8 @@ export default function UserDetailsPage() {
       <div className="bg-white border border-gray-200 rounded-lg p-3 md:p-4 shadow-sm">
         {/* Mobile Layout - Stack vertically */}
         <div className="flex flex-col space-y-3 md:hidden">
-          <Button 
-            onClick={() => setLocation("/admin-dashboard")} 
+          <Button
+            onClick={() => setLocation("/admin-dashboard")}
             variant="outline"
             size="sm"
             className="w-full bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 font-medium"
@@ -231,12 +231,12 @@ export default function UserDetailsPage() {
             <p className="text-gray-600 text-xs">Informações e histórico</p>
           </div>
         </div>
-        
+
         {/* Desktop Layout - Side by side */}
         <div className="hidden md:flex md:items-center md:justify-between gap-4">
           <div className="flex items-center space-x-4">
-            <Button 
-              onClick={() => setLocation("/admin-dashboard")} 
+            <Button
+              onClick={() => setLocation("/admin-dashboard")}
               variant="outline"
               size="lg"
               className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:border-blue-300 font-medium"
@@ -250,7 +250,7 @@ export default function UserDetailsPage() {
             </div>
           </div>
         </div>
-        
+
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-2 mt-4">
           <Button onClick={handleEditUser} variant="outline" size="sm">
@@ -261,8 +261,8 @@ export default function UserDetailsPage() {
             <DollarSign className="h-4 w-4 mr-2" />
             Saldo
           </Button>
-          <Button 
-            onClick={() => setBlockDialogOpen(true)} 
+          <Button
+            onClick={() => setBlockDialogOpen(true)}
             variant={user.blocked ? "default" : "destructive"}
             size="sm"
           >
@@ -310,7 +310,7 @@ export default function UserDetailsPage() {
             </div>
             <div>
               <Label className="text-sm font-medium text-muted-foreground">Chave PIX</Label>
-              <p className="text-lg">{user.pixKey || "Não informado"}</p>
+              <p className="text-lg">{user.defaultPixKey || "Não informado"}</p>
             </div>
           </CardContent>
         </Card>
@@ -466,23 +466,23 @@ export default function UserDetailsPage() {
                         {format(new Date(transaction.createdAt), "dd/MM/yyyy HH:mm")}
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant={
-                            transaction.type === "deposit" ? "default" : 
-                            transaction.type === "withdrawal" ? "destructive" : 
-                            "secondary"
+                            transaction.type === "deposit" ? "default" :
+                              transaction.type === "withdrawal" ? "destructive" :
+                                "secondary"
                           }
                         >
-                          {transaction.type === "deposit" ? "Depósito" : 
-                           transaction.type === "withdrawal" ? "Saque" : 
-                           transaction.type === "bet" ? "Aposta" :
-                           transaction.type === "win" ? "Ganho" : "Bônus"}
+                          {transaction.type === "deposit" ? "Depósito" :
+                            transaction.type === "withdrawal" ? "Saque" :
+                              transaction.type === "bet" ? "Aposta" :
+                                transaction.type === "win" ? "Ganho" : "Bônus"}
                         </Badge>
                       </TableCell>
-                      <TableCell 
+                      <TableCell
                         className={
-                          transaction.type === "deposit" || transaction.type === "win" || transaction.type === "bonus" 
-                            ? "text-green-600" 
+                          transaction.type === "deposit" || transaction.type === "win" || transaction.type === "bonus"
+                            ? "text-green-600"
                             : "text-red-600"
                         }
                       >
@@ -543,11 +543,11 @@ export default function UserDetailsPage() {
               />
             </div>
             <div>
-              <Label htmlFor="pixKey">Chave PIX</Label>
+              <Label htmlFor="defaultPixKey">Chave PIX (CPF)</Label>
               <Input
-                id="pixKey"
-                value={editUser.pixKey || ""}
-                onChange={(e) => setEditUser({ ...editUser, pixKey: e.target.value })}
+                id="defaultPixKey"
+                value={editUser.defaultPixKey || ""}
+                onChange={(e) => setEditUser({ ...editUser, defaultPixKey: e.target.value })}
               />
             </div>
           </div>
@@ -555,7 +555,7 @@ export default function UserDetailsPage() {
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={() => editMutation.mutate(editUser)}
               disabled={editMutation.isPending}
             >
@@ -591,14 +591,14 @@ export default function UserDetailsPage() {
             <Button variant="outline" onClick={() => setBalanceDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={() => handleUpdateBalance("subtract")}
               disabled={updateBalanceMutation.isPending}
               variant="destructive"
             >
               Subtrair
             </Button>
-            <Button 
+            <Button
               onClick={() => handleUpdateBalance("add")}
               disabled={updateBalanceMutation.isPending}
             >
@@ -616,7 +616,7 @@ export default function UserDetailsPage() {
               {user.blocked ? "Desbloquear Usuário" : "Bloquear Usuário"}
             </DialogTitle>
             <DialogDescription>
-              {user.blocked 
+              {user.blocked
                 ? "Tem certeza que deseja desbloquear este usuário?"
                 : "Digite o motivo do bloqueio."
               }
@@ -639,15 +639,15 @@ export default function UserDetailsPage() {
             <Button variant="outline" onClick={() => setBlockDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleBlockUser}
               disabled={blockMutation.isPending}
               variant={user.blocked ? "default" : "destructive"}
             >
-              {blockMutation.isPending 
-                ? "Processando..." 
-                : user.blocked 
-                  ? "Desbloquear" 
+              {blockMutation.isPending
+                ? "Processando..."
+                : user.blocked
+                  ? "Desbloquear"
                   : "Bloquear"
               }
             </Button>
