@@ -35,7 +35,7 @@ export const animals = pgTable("animals", {
   id: serial("id").primaryKey(),
   group: integer("group").notNull(),
   name: text("name").notNull(),
-  numbers: text("numbers").array().notNull(),
+  numbers: text("numbers").notNull(),
 });
 
 export const insertAnimalSchema = createInsertSchema(animals).omit({
