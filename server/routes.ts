@@ -1321,11 +1321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           firstDepositBonusMaxAmount: 200,
           firstDepositBonusRollover: 3,
           firstDepositBonusExpiration: 7,
-          promotionalBannersEnabled: false,
-          siteName: "Jogo do Bicho",
-          siteDescription: "A melhor plataforma de apostas online",
-          logoUrl: "/img/logo.png",
-          faviconUrl: "/favicon.ico"
+          promotionalBannersEnabled: false
         };
 
         res.json(defaultSettings);
@@ -7024,13 +7020,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Criar transação no banco
       const gateway = await storage.getPaymentGatewayByType("codexpay");
-      await storage.createPaymentTransaction({
+      const transactionId = await storage.createPaymentTransaction({
         userId: user.id,
         amount: Number(amount),
         gatewayId: gateway?.id || 0,
         status: 'pending',
         type: 'deposit',
-        externalId: payment.id
+        externalId: payment.id,
+        gatewayResponse: payment // Guardar resposta completa para debug
       });
 
       console.log('✅ CODEXPAY: Pagamento PIX criado com sucesso:', payment.id);
@@ -7039,6 +7036,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         payment: {
           id: payment.id,
+          transactionId: transactionId, // Importante para o polling no frontend
           amount: payment.amount,
           qrCode: payment.qrCode,
           status: payment.status
@@ -7129,35 +7127,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/codexpay/webhook", async (req, res) => {
     try {
       const payload = req.body;
+      console.log('🔔 CODEXPAY: Webhook recebido:', JSON.stringify(payload, null, 2));
 
-      console.log('🔔 CODEXPAY: Webhook recebido:', {
-        type: payload.type,
-        transactionId: payload.transaction_id,
-        status: payload.status,
-        amount: payload.amount
-      });
+      const transactionId = payload.transaction_id || payload.id;
+      const status = String(payload.status).toUpperCase();
+      const type = String(payload.type).toUpperCase();
 
       // Validar se temos a transação no banco
-      const transaction = await storage.getPaymentTransactionByGatewayId(payload.transaction_id);
+      const transaction = await storage.getPaymentTransactionByGatewayId(transactionId);
 
       if (!transaction) {
-        console.warn('⚠️ CODEXPAY: Transação não encontrada no banco:', payload.transaction_id);
+        console.warn('⚠️ CODEXPAY: Transação não encontrada no banco:', transactionId);
         return res.status(404).json({ error: 'Transaction not found' });
       }
 
-      if (transaction.status !== 'pending') {
+      if (transaction.status === 'approved' || transaction.status === 'completed') {
         console.log('ℹ️ CODEXPAY: Transação já processada anteriormente:', transaction.id);
         return res.json({ success: true, message: 'Already processed' });
       }
 
       // Processar evento baseado no status
-      if (payload.status === 'PAID' && payload.type === 'DEPOSIT') {
+      const isSuccess = ['PAID', 'COMPLETED', 'COMPLETO', 'APPROVED', 'SUCESSO'].includes(status);
+
+      if (isSuccess && type === 'DEPOSIT') {
         // Depósito aprovado - creditar saldo
+        console.log(`✅ CODEXPAY: Processando depósito aprovado para transação ${transaction.id}`);
         await storage.updatePaymentTransactionStatus(transaction.id, 'approved');
 
         const user = await storage.getUser(transaction.userId);
         if (user) {
-          const newBalance = user.balance + transaction.amount;
+          const newBalance = Number(user.balance) + Number(transaction.amount);
           await storage.updateUserBalance(user.id, newBalance);
 
           console.log('✅ CODEXPAY: Depósito creditado:', {
@@ -7166,7 +7165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             newBalance
           });
         }
-      } else if (payload.status === 'COMPLETED' && payload.type === 'WITHDRAWAL') {
+      } else if (isSuccess && type === 'WITHDRAWAL') {
         // Saque aprovado
         await storage.updatePaymentTransactionStatus(transaction.id, 'approved');
 
@@ -7179,11 +7178,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         console.log('✅ CODEXPAY: Saque aprovado:', transaction.id);
-      } else if (payload.status === 'FAILED' || payload.status === 'REJECTED' || payload.status === 'CANCELLED') {
+      } else if (['FAILED', 'REJECTED', 'CANCELLED', 'FALHOU', 'REJEITADO'].includes(status)) {
         // Falhou - atualizar status e devolver saldo se for saque
         await storage.updatePaymentTransactionStatus(transaction.id, 'rejected');
 
-        if (payload.type === 'Withdrawal') {
+        if (type === 'WITHDRAWAL') {
           // Se estiver vinculado à tabela de saques (withdrawals), atualizar para rejected
           const withdrawalId = (transaction.gatewayResponse as any)?.withdrawalId;
           if (withdrawalId) {
@@ -7192,7 +7191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const user = await storage.getUser(transaction.userId);
           if (user) {
-            const newBalance = user.balance + transaction.amount;
+            const newBalance = Number(user.balance) + Number(transaction.amount);
             await storage.updateUserBalance(user.id, newBalance);
 
             console.log('💰 CODEXPAY: Saldo devolvido por saque rejeitado:', {
