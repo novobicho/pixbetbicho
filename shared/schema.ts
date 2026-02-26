@@ -544,5 +544,11 @@ export type InsertUserBonus = z.infer<typeof insertUserBonusSchema>;
 export type PromotionalBanner = typeof promotionalBanners.$inferSelect;
 export type InsertPromotionalBanner = z.infer<typeof insertPromotionalBannerSchema>;
 
-// Adicionando campos ao sistema de configurações
-// As configurações de bônus já estão incluídas no schema de system_settings
+// Tabela para sessões de usuário (express-session)
+export const sessions = pgTable("session", {
+  sid: text("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull(),
+});
+
+export type Session = typeof sessions.$inferSelect;
