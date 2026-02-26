@@ -358,7 +358,13 @@ export function DepositDialog({
           useBonus: data.useBonus
         });
         return await res.json();
-        // Código para Ezzebank removido
+      } else if (gateway?.type === "codexpay") {
+        // CodexPay (PIX)
+        const res = await apiRequest("POST", "/api/codexpay/create-pix-payment", {
+          amount: data.amount,
+          useBonus: data.useBonus
+        });
+        return await res.json();
       } else {
         throw new Error("Método de pagamento não suportado");
       }
@@ -579,13 +585,13 @@ export function DepositDialog({
                           Escaneie o QR Code com o aplicativo do seu banco
                         </div>
                       </>
-                    ) : transactionDetail?.qrCodeUrl ? (
+                    ) : transactionDetail?.payment?.qrCode ? (
                       <>
                         <div className="border p-2 rounded-md bg-white">
                           <img
-                            src={transactionDetail.qrCodeUrl.startsWith('data:')
-                              ? transactionDetail.qrCodeUrl
-                              : `data:image/png;base64,${transactionDetail.qrCodeUrl.replace('data:image/png;base64,', '')}`}
+                            src={transactionDetail.payment.qrCode.startsWith('data:')
+                              ? transactionDetail.payment.qrCode
+                              : `data:image/png;base64,${transactionDetail.payment.qrCode}`}
                             alt="QR Code PIX"
                             className="w-48 h-48"
                           />
@@ -605,7 +611,10 @@ export function DepositDialog({
                   <div className="flex flex-col space-y-4">
                     <div className="relative">
                       <div className="bg-muted p-3 rounded-md text-xs font-mono break-all border">
-                        {transactionDetail?.paymentDetails?.qr_code || transactionDetail?.pixCopyPasteCode || "Carregando código PIX..."}
+                        {transactionDetail?.paymentDetails?.qr_code ||
+                          transactionDetail?.pixCopyPasteCode ||
+                          transactionDetail?.payment?.qrCode ||
+                          "Carregando código PIX..."}
                       </div>
                       <Button
                         size="sm"

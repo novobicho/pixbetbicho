@@ -79,20 +79,20 @@ export function FinancialReports() {
     from: subDays(new Date(), 7),
     to: new Date()
   });
-  
+
   const [activeTab, setActiveTab] = useState("deposits");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  
+
   // Estados para o AlertDialog de saldo insuficiente
   const [showGatewayAlert, setShowGatewayAlert] = useState(false);
   const [alertInfo, setAlertInfo] = useState<{ message: string, withdrawalId?: number, amount?: number, balance?: number }>({ message: "" });
-  
+
   // Estado para controlar o carregamento das operações
   const [processingWithdrawal, setProcessingWithdrawal] = useState<number | null>(null);
-  
+
   // Notificações
   const { toast } = useToast();
-  
+
   // Consulta de transações de depósito
   const { data: deposits, isLoading: isLoadingDeposits } = useQuery<PaymentTransaction[]>({
     queryKey: ["/api/admin/transactions", "deposit", dateRange.from.toISOString(), dateRange.to.toISOString()],
@@ -108,7 +108,7 @@ export function FinancialReports() {
     },
     enabled: activeTab === "deposits" || activeTab === "summary"
   });
-  
+
   // Consulta de transações de saque
   const { data: withdrawals, isLoading: isLoadingWithdrawals } = useQuery<Withdrawal[]>({
     queryKey: ["/api/admin/withdrawals", statusFilter],
@@ -123,7 +123,7 @@ export function FinancialReports() {
     },
     enabled: activeTab === "withdrawals" || activeTab === "summary"
   });
-  
+
   // Consulta do resumo financeiro
   const { data: summary, isLoading: isLoadingSummary } = useQuery({
     queryKey: ["/api/admin/transactions/summary", dateRange.from.toISOString(), dateRange.to.toISOString()],
@@ -138,7 +138,7 @@ export function FinancialReports() {
     },
     enabled: activeTab === "summary"
   });
-  
+
   // Consulta do saldo disponível no gateway
   const { data: gatewayBalance, isLoading: isLoadingGatewayBalance, refetch: refetchGatewayBalance } = useQuery({
     queryKey: ["/api/admin/gateway-balance"],
@@ -149,18 +149,18 @@ export function FinancialReports() {
     },
     enabled: activeTab === "withdrawals"
   });
-  
+
   // QueryClient para manipular o cache
   const queryClient = useQueryClient();
-  
+
   // Função para aprovar um saque
   const approveWithdrawal = async (withdrawalId: number) => {
     try {
       setProcessingWithdrawal(withdrawalId);
-      
+
       // Verificar primeiro se há saldo disponível no gateway
       await refetchGatewayBalance();
-      
+
       if (!gatewayBalance || !gatewayBalance.balance) {
         toast({
           title: "Erro ao verificar saldo",
@@ -170,7 +170,7 @@ export function FinancialReports() {
         setProcessingWithdrawal(null);
         return;
       }
-      
+
       // Obter detalhes do saque a ser aprovado
       const withdrawal = withdrawals?.find(w => w.id === withdrawalId);
       if (!withdrawal) {
@@ -182,7 +182,7 @@ export function FinancialReports() {
         setProcessingWithdrawal(null);
         return;
       }
-      
+
       // Verificar se o saldo é suficiente
       if (gatewayBalance.balance < withdrawal.amount) {
         setAlertInfo({
@@ -195,19 +195,19 @@ export function FinancialReports() {
         setProcessingWithdrawal(null);
         return;
       }
-      
+
       // Enviar solicitação para aprovar o saque
       const res = await apiRequest("PATCH", `/api/admin/withdrawals/${withdrawalId}/status`, {
         status: "approved",
         notes: `Aprovado manualmente. Saldo disponível: R$ ${gatewayBalance.balance.toFixed(2)}`
       });
-      
+
       if (res.ok) {
         toast({
           title: "Saque aprovado",
           description: "O saque foi aprovado e está em processamento pelo gateway",
         });
-        
+
         // Atualizar o cache após o sucesso
         await queryClient.invalidateQueries({ queryKey: ["/api/admin/withdrawals"] });
       } else {
@@ -229,24 +229,24 @@ export function FinancialReports() {
       setProcessingWithdrawal(null);
     }
   };
-  
+
   // Função para rejeitar um saque
   const rejectWithdrawal = async (withdrawalId: number) => {
     try {
       setProcessingWithdrawal(withdrawalId);
-      
+
       // Enviar solicitação para rejeitar o saque
       const res = await apiRequest("PATCH", `/api/admin/withdrawals/${withdrawalId}/status`, {
         status: "rejected",
         rejectionReason: "Rejeitado manualmente pelo administrador"
       });
-      
+
       if (res.ok) {
         toast({
           title: "Saque rejeitado",
           description: "O saque foi rejeitado com sucesso",
         });
-        
+
         // Atualizar o cache após o sucesso
         await queryClient.invalidateQueries({ queryKey: ["/api/admin/withdrawals"] });
       } else {
@@ -268,20 +268,20 @@ export function FinancialReports() {
       setProcessingWithdrawal(null);
     }
   };
-  
+
   // Função para exportar transações para CSV
   const exportToCSV = (data: any[], filename: string) => {
     if (!data || data.length === 0) return;
-    
+
     // Criar cabeçalhos com base na primeira linha de dados
     const headers = Object.keys(data[0]);
-    
+
     // Converter dados para CSV
     const csvContent = [
       headers.join(","),
       ...data.map(row => headers.map(header => `"${row[header] || ""}"`).join(","))
     ].join("\n");
-    
+
     // Criar e baixar o arquivo
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -293,7 +293,7 @@ export function FinancialReports() {
     link.click();
     document.body.removeChild(link);
   };
-  
+
   // Função para formatar o status de um depósito
   const getDepositStatusBadge = (status: string) => {
     switch (status) {
@@ -307,7 +307,7 @@ export function FinancialReports() {
         return <Badge variant="secondary" className="flex items-center gap-1"><InfoIcon className="h-3 w-3" /> {status}</Badge>;
     }
   };
-  
+
   // Função para formatar o status de um saque
   const getWithdrawalStatusBadge = (status: WithdrawalStatus) => {
     switch (status) {
@@ -323,7 +323,7 @@ export function FinancialReports() {
         return <Badge variant="secondary" className="flex items-center gap-1"><InfoIcon className="h-3 w-3" /> {status}</Badge>;
     }
   };
-  
+
   // Filtragem com base no intervalo de datas
   const filteredDeposits = deposits?.filter(tx => {
     // Usar campo createdAt para transações
@@ -333,7 +333,7 @@ export function FinancialReports() {
       end: endOfDay(dateRange.to)
     });
   }) || [];
-  
+
   const filteredWithdrawals = withdrawals?.filter(tx => {
     // Usar campo requestedAt para saques
     const txDate = new Date(tx.requestedAt);
@@ -342,21 +342,21 @@ export function FinancialReports() {
       end: endOfDay(dateRange.to)
     });
   }) || [];
-  
+
   // Cálculos de totais
-  const totalDepositsAmount = filteredDeposits.reduce((sum, tx) => 
+  const totalDepositsAmount = filteredDeposits.reduce((sum, tx) =>
     tx.status === "completed" ? sum + tx.amount : sum, 0);
-  
-  const totalWithdrawalsAmount = filteredWithdrawals.reduce((sum, tx) => 
+
+  const totalWithdrawalsAmount = filteredWithdrawals.reduce((sum, tx) =>
     tx.status === "approved" ? sum + tx.amount : sum, 0);
-  
-  const totalPendingWithdrawals = filteredWithdrawals.filter(tx => 
+
+  const totalPendingWithdrawals = filteredWithdrawals.filter(tx =>
     tx.status === "pending").length;
-    
+
   const totalPendingWithdrawalsAmount = filteredWithdrawals
     .filter(tx => tx.status === "pending")
     .reduce((sum, tx) => sum + tx.amount, 0);
-  
+
   return (
     <Card className="w-full">
       {/* AlertDialog para saldo insuficiente */}
@@ -369,7 +369,7 @@ export function FinancialReports() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <p>Não é possível aprovar o saque pois o saldo disponível no gateway de pagamento é insuficiente.</p>
-              
+
               {alertInfo.amount && alertInfo.balance && (
                 <div className="bg-muted p-4 rounded-md space-y-2 mt-3">
                   <div className="flex justify-between items-center">
@@ -392,7 +392,7 @@ export function FinancialReports() {
                   </div>
                 </div>
               )}
-              
+
               <p className="mt-4">Por favor, adicione fundos ao gateway antes de aprovar este saque.</p>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -421,21 +421,21 @@ export function FinancialReports() {
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="w-full sm:w-1/2 md:w-1/3">
               <Label htmlFor="date-range" className="mb-2 block">Período</Label>
-              <DateRangePicker 
-                dateRange={dateRange} 
+              <DateRangePicker
+                dateRange={dateRange}
                 onChange={(range: DateRange | undefined) => {
                   if (range?.from && range?.to) {
                     setDateRange({ from: range.from, to: range.to });
                   }
-                }} 
+                }}
               />
             </div>
-            
+
             {activeTab === "withdrawals" && (
               <div className="w-full sm:w-1/2 md:w-1/3">
                 <Label htmlFor="status-filter" className="mb-2 block">Status</Label>
-                <Select 
-                  value={statusFilter} 
+                <Select
+                  value={statusFilter}
                   onValueChange={setStatusFilter}
                 >
                   <SelectTrigger id="status-filter" className="w-full">
@@ -452,7 +452,7 @@ export function FinancialReports() {
               </div>
             )}
           </div>
-          
+
           {/* Tabs para alternar entre visões */}
           <Tabs defaultValue={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-3">
@@ -460,7 +460,7 @@ export function FinancialReports() {
               <TabsTrigger value="deposits">Depósitos</TabsTrigger>
               <TabsTrigger value="withdrawals">Saques</TabsTrigger>
             </TabsList>
-            
+
             {/* Tab de Resumo Geral */}
             <TabsContent value="summary">
               <div className="space-y-6">
@@ -479,7 +479,7 @@ export function FinancialReports() {
                       </div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6">
                       <div className="flex items-center justify-between">
@@ -494,7 +494,7 @@ export function FinancialReports() {
                       </div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6">
                       <div className="flex items-center justify-between">
@@ -502,8 +502,8 @@ export function FinancialReports() {
                           <p className="text-sm text-muted-foreground">Saldo Líquido</p>
                           <div className={cn(
                             "text-xl sm:text-2xl font-bold",
-                            totalDepositsAmount - totalWithdrawalsAmount >= 0 
-                              ? "text-green-600" 
+                            totalDepositsAmount - totalWithdrawalsAmount >= 0
+                              ? "text-green-600"
                               : "text-red-600"
                           )}>
                             R$ {(totalDepositsAmount - totalWithdrawalsAmount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -512,7 +512,7 @@ export function FinancialReports() {
                       </div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6">
                       <div className="flex items-center justify-between">
@@ -528,31 +528,31 @@ export function FinancialReports() {
                     </CardContent>
                   </Card>
                 </div>
-                
+
                 {/* Estatísticas detalhadas caso a API forneça */}
                 {summary && (
                   <div className="mt-8">
                     <h3 className="text-lg font-semibold mb-4">Estatísticas do Período</h3>
-                    
+
                     <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                       <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-sm text-gray-500">Depósitos</p>
                         <p className="text-base sm:text-lg font-bold">{summary.deposits.count}</p>
                         <p className="text-sm sm:text-base text-green-600">R$ {summary.deposits.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                       </div>
-                      
+
                       <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-sm text-gray-500">Saques</p>
                         <p className="text-base sm:text-lg font-bold">{summary.withdrawals.count}</p>
                         <p className="text-sm sm:text-base text-red-600">R$ {summary.withdrawals.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                       </div>
-                      
+
                       <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-sm text-gray-500">Apostas</p>
                         <p className="text-base sm:text-lg font-bold">{summary.bets.count}</p>
                         <p className="text-sm sm:text-base text-gray-600">R$ {summary.bets.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                       </div>
-                      
+
                       <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-sm text-gray-500">Ganhos</p>
                         <p className="text-base sm:text-lg font-bold">{summary.wins.count}</p>
@@ -563,15 +563,15 @@ export function FinancialReports() {
                 )}
               </div>
             </TabsContent>
-            
+
             {/* Tab de Depósitos */}
             <TabsContent value="deposits">
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Depósitos</h3>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="flex items-center gap-1"
                     onClick={() => exportToCSV(filteredDeposits, "depositos")}
                     disabled={!filteredDeposits.length}
@@ -580,7 +580,7 @@ export function FinancialReports() {
                     Exportar CSV
                   </Button>
                 </div>
-                
+
                 {isLoadingDeposits ? (
                   <div className="flex justify-center py-8">
                     <RefreshCcw className="h-8 w-8 animate-spin text-primary" />
@@ -632,7 +632,7 @@ export function FinancialReports() {
                         </Table>
                       </ScrollArea>
                     </div>
-                    
+
                     {/* Visão Mobile - Cards */}
                     <div className="md:hidden space-y-4">
                       {filteredDeposits.map((tx) => (
@@ -674,7 +674,7 @@ export function FinancialReports() {
                 )}
               </div>
             </TabsContent>
-            
+
             {/* Tab de Saques */}
             <TabsContent value="withdrawals">
               <div className="space-y-4">
@@ -685,10 +685,10 @@ export function FinancialReports() {
                       <CircleDollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                       <div>
                         <h4 className="font-medium">Saldo do Gateway</h4>
-                        <p className="text-sm text-muted-foreground">Pushin Pay (PIX)</p>
+                        <p className="text-sm text-muted-foreground">{gatewayBalance?.gatewayName || "Carregando..."}</p>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
                       {isLoadingGatewayBalance ? (
                         <div className="flex items-center gap-2">
@@ -701,27 +701,27 @@ export function FinancialReports() {
                             <span className={cn(
                               "text-base sm:text-xl font-semibold",
                               gatewayBalance?.balance ? (
-                                gatewayBalance.balance < totalPendingWithdrawalsAmount 
-                                  ? "text-red-600" 
+                                gatewayBalance.balance < totalPendingWithdrawalsAmount
+                                  ? "text-red-600"
                                   : "text-green-600"
                               ) : "text-muted-foreground"
                             )}>
-                              {gatewayBalance?.balance !== undefined 
+                              {gatewayBalance?.balance !== undefined
                                 ? `R$ ${gatewayBalance.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                                 : "Indisponível"}
                             </span>
                             {gatewayBalance?.balance !== undefined && totalPendingWithdrawalsAmount > 0 && (
                               <span className="text-xs text-muted-foreground max-w-[220px] sm:max-w-none">
-                                {gatewayBalance.balance >= totalPendingWithdrawalsAmount 
+                                {gatewayBalance.balance >= totalPendingWithdrawalsAmount
                                   ? "Saldo suficiente para todos os saques pendentes"
                                   : `Saldo insuficiente, faltam R$ ${(totalPendingWithdrawalsAmount - gatewayBalance.balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                               </span>
                             )}
                           </div>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="h-8 w-8 p-0 flex-shrink-0" 
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0 flex-shrink-0"
                             onClick={() => refetchGatewayBalance()}
                             title="Atualizar saldo"
                           >
@@ -732,12 +732,12 @@ export function FinancialReports() {
                     </div>
                   </CardContent>
                 </Card>
-                
+
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Saques</h3>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="flex items-center gap-1"
                     onClick={() => exportToCSV(filteredWithdrawals, "saques")}
                     disabled={!filteredWithdrawals.length}
@@ -746,7 +746,7 @@ export function FinancialReports() {
                     Exportar CSV
                   </Button>
                 </div>
-                
+
                 {isLoadingWithdrawals ? (
                   <div className="flex justify-center py-8">
                     <RefreshCcw className="h-8 w-8 animate-spin text-primary" />
@@ -790,9 +790,9 @@ export function FinancialReports() {
                                 <TableCell>
                                   {(withdrawal.status === "pending" || withdrawal.status === "processing") && (
                                     <div className="flex space-x-2">
-                                      <Button 
-                                        variant="outline" 
-                                        size="sm" 
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
                                         className="h-8 w-8 p-0"
                                         title={withdrawal.status === "processing" ? "Saque em processamento" : "Aprovar saque"}
                                         disabled={processingWithdrawal === withdrawal.id || withdrawal.status === "processing"}
@@ -804,7 +804,7 @@ export function FinancialReports() {
                                           <CheckCircle2 className="h-4 w-4 text-green-500" />
                                         )}
                                       </Button>
-                                      <Button 
+                                      <Button
                                         variant="outline"
                                         size="sm"
                                         className="h-8 w-8 p-0"
@@ -827,7 +827,7 @@ export function FinancialReports() {
                         </Table>
                       </ScrollArea>
                     </div>
-                    
+
                     {/* Visão Mobile - Cards */}
                     <div className="md:hidden space-y-4">
                       {filteredWithdrawals.map((withdrawal) => (
@@ -860,12 +860,12 @@ export function FinancialReports() {
                                   <span className="text-xs font-mono break-all">{withdrawal.pixKey}</span>
                                 </div>
                               </div>
-                              
+
                               {(withdrawal.status === "pending" || withdrawal.status === "processing") && (
                                 <div className="flex justify-end items-center gap-2 pt-2">
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
                                     className="h-8 gap-1"
                                     disabled={processingWithdrawal === withdrawal.id || withdrawal.status === "processing"}
                                     onClick={() => withdrawal.status === "pending" && approveWithdrawal(withdrawal.id)}
@@ -877,7 +877,7 @@ export function FinancialReports() {
                                     )}
                                     Aprovar
                                   </Button>
-                                  <Button 
+                                  <Button
                                     variant="outline"
                                     size="sm"
                                     className="h-8 gap-1"
