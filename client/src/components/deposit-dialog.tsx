@@ -665,7 +665,12 @@ export function DepositDialog({
                   {new Intl.NumberFormat('pt-BR', {
                     style: 'currency',
                     currency: 'BRL'
-                  }).format(transactionDetail?.amount || 0)}
+                  }).format(
+                    transactionDetail?.payment?.amount ||
+                    transactionDetail?.paymentDetails?.amount ||
+                    transactionDetail?.amount ||
+                    0
+                  )}
                 </div>
                 <div className="text-muted-foreground">Expira em:</div>
                 <div className="text-right font-medium flex items-center justify-end">
