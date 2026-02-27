@@ -176,8 +176,27 @@ export class CodexPayService {
     async getPaymentStatus(paymentId: string): Promise<any> {
         try {
             console.log('🔍 CODEXPAY: Consultando status do pagamento:', paymentId);
-            const response = await this.makeRequest(`/api/payments/status/${paymentId}`, 'GET');
-            return response;
+            // Tentar sequencialmente endpoints comuns
+            const endpoints = [
+                `/api/transaction/${paymentId}`,
+                `/api/payments/status/${paymentId}`,
+                `/api/payments/${paymentId}`,
+                `/api/payment/${paymentId}`
+            ];
+
+            for (const endpoint of endpoints) {
+                try {
+                    console.log(`🔍 CODEXPAY: Tentando endpoint: ${endpoint}`);
+                    return await this.makeRequest(endpoint, 'GET');
+                } catch (err: any) {
+                    if (err.message.includes('404')) {
+                        console.log(`ℹ️ CODEXPAY: ${endpoint} não encontrado (404).`);
+                        continue;
+                    }
+                    throw err; // Outros erros (401, 500) devem parar a execução
+                }
+            }
+            throw new Error(`Nenhum endpoint de status encontrado para a transação ${paymentId}`);
         } catch (error) {
             console.error('🔥 CODEXPAY: Erro ao consultar status do pagamento:', error);
             throw error;
@@ -224,12 +243,31 @@ export class CodexPayService {
 
     async getBalance(): Promise<number> {
         try {
-            // Tentativa de obter o saldo do merchant
-            const response = await this.makeRequest('/api/merchants/balance', 'GET');
-            return response.balance || 0;
+            // Tentativa de obter o saldo usando múltiplos endpoints comuns
+            const endpoints = [
+                '/api/balance',
+                '/api/account/balance',
+                '/api/merchants/balance',
+                '/api/merchant/balance'
+            ];
+
+            for (const endpoint of endpoints) {
+                try {
+                    console.log(`💰 CODEXPAY: Tentando saldo em: ${endpoint}`);
+                    const response = await this.makeRequest(endpoint, 'GET');
+                    return response.balance || response.amount || response.data?.balance || 0;
+                } catch (err: any) {
+                    if (err.message.includes('404')) {
+                        console.log(`ℹ️ CODEXPAY: Saldo em ${endpoint} não encontrado (404).`);
+                        continue;
+                    }
+                    console.warn(`⚠️ CODEXPAY: Erro ao consultar ${endpoint}:`, err.message);
+                }
+            }
+
+            return 0;
         } catch (error) {
             console.error('🔥 CODEXPAY: Erro ao consultar saldo:', error);
-            // Retorna 0 para evitar quebra no admin, mas loga o erro
             return 0;
         }
     }
