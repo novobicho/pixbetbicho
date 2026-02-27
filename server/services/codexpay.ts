@@ -52,8 +52,8 @@ export class CodexPayService {
         this.config = {
             clientId,
             clientSecret,
-            // URL CORRETA conforme documentação oficial: https://api.codexpay.com.br
-            baseUrl: 'https://api.codexpay.com.br'
+            // URL CORRETA da API CodexPay (mesma da documentação)
+            baseUrl: 'https://api.codexpay.app'
         };
 
         if (!this.config.clientId || !this.config.clientSecret) {
