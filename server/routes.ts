@@ -138,6 +138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       status: 'ok',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'unknown',
+      webhookUrl: process.env.WEBHOOK_URL || 'NOT_CONFIGURED',
       server: {
         version: process.version,
         uptime: process.uptime()
@@ -4146,12 +4147,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // --- LOGICA CODEX PAY ---
           else if (gateway.type === 'codexpay' && transaction.externalId) {
             try {
+              console.log(`🔍 CODEXPAY: Verificando status na API para transação ${transaction.id} (ExternalId: ${transaction.externalId})`);
               const paymentData = await codexpayService.getPaymentStatus(transaction.externalId);
-              const status = String(paymentData.status || paymentData.transaction?.status || "").toUpperCase();
 
-              if (['PAID', 'COMPLETED', 'COMPLETO', 'APPROVED', 'SUCESSO'].includes(status)) {
+              // Extrair status de forma resiliente
+              const data = paymentData.transaction || paymentData.data || paymentData;
+              const status = String(data.status || paymentData.status || "").toUpperCase();
+
+              console.log(`ℹ️ CODEXPAY: Status retornado: ${status}`);
+
+              if (['PAID', 'COMPLETED', 'COMPLETO', 'APPROVED', 'SUCESSO', 'CONCLUIDO', 'PAGO'].includes(status)) {
+                console.log(`✅ CODEXPAY: Confirmando pagamento para usuário ${transaction.userId}, valor: ${transaction.amount}`);
+
+                // 1. Atualizar status da transação no banco
                 await storage.updateTransactionStatus(transaction.id, "completed", transaction.externalId, transaction.externalUrl || undefined, paymentData);
-                await storage.updateUserBalance(transaction.userId, transaction.amount);
+
+                // 2. Processar bônus de primeiro depósito (IMPORTANTE: Estava faltando aqui!)
+                try {
+                  const systemSettings = await storage.getSystemSettings();
+                  if (systemSettings?.firstDepositBonusEnabled) {
+                    const hasBonus = await storage.hasUserReceivedFirstDepositBonus(transaction.userId);
+                    if (!hasBonus) {
+                      console.log(`🎁 CODEXPAY: Aplicando bônus de primeiro depósito para usuário ${transaction.userId}`);
+
+                      const depositAmount = Number(transaction.amount);
+                      let bonusAmount = 0;
+                      if (systemSettings.firstDepositBonusPercentage > 0) {
+                        bonusAmount = (depositAmount * systemSettings.firstDepositBonusPercentage) / 100;
+                        if (systemSettings.firstDepositBonusMaxAmount > 0 && bonusAmount > systemSettings.firstDepositBonusMaxAmount) {
+                          bonusAmount = systemSettings.firstDepositBonusMaxAmount;
+                        }
+                      } else {
+                        bonusAmount = systemSettings.firstDepositBonusAmount;
+                      }
+
+                      bonusAmount = parseFloat(bonusAmount.toFixed(2));
+
+                      if (bonusAmount > 0) {
+                        const rolloverAmount = bonusAmount * systemSettings.firstDepositBonusRollover;
+                        const expirationDays = systemSettings.firstDepositBonusExpiration || 7;
+                        const expirationDate = new Date();
+                        expirationDate.setDate(expirationDate.getDate() + expirationDays);
+
+                        await storage.createUserBonus({
+                          userId: transaction.userId,
+                          type: "first_deposit",
+                          amount: bonusAmount,
+                          remainingAmount: bonusAmount,
+                          rolloverAmount,
+                          status: "active",
+                          expiresAt: expirationDate,
+                          relatedTransactionId: transaction.id
+                        });
+
+                        await storage.updateUserBonusBalance(transaction.userId, bonusAmount);
+                        console.log(`✅ CODEXPAY: Bônus de R$ ${bonusAmount} creditado.`);
+                      }
+                    }
+                  }
+                } catch (bonusErr) {
+                  console.error("❌ CODEXPAY: Erro ao processar bônus no check-pending:", bonusErr);
+                }
+
+                // 3. Atualizar saldo principal
+                await storage.updateUserBalance(transaction.userId, Number(transaction.amount));
+
+                // 4. Criar registro de transação financeira
+                await storage.createTransaction({
+                  userId: transaction.userId,
+                  type: "deposit",
+                  amount: Number(transaction.amount),
+                  description: "Depósito via CodexPay (Confirmado via Polling)",
+                  relatedId: transaction.id,
+                });
+
                 updatedCount++;
                 results.push({ transactionId: transaction.id, status: "completed", message: "Confirmado via CodexPay API" });
                 verified = true;
@@ -6953,94 +7022,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Webhook CODEXPAY para receber notificações de pagamento e saque
+  // Webhook CODEXPAY para receber notificações de pagamento e saque
   app.post("/api/codexpay/webhook", async (req, res) => {
     try {
       const payload = req.body;
       console.log('🔔 CODEXPAY: Webhook recebido:', JSON.stringify(payload, null, 2));
 
-      const transactionId = payload.transaction_id || payload.id;
-      const status = String(payload.status).toUpperCase();
-      const type = String(payload.type).toUpperCase();
+      // Extrair dados de forma resiliente (pode vir no root ou aninhado em .transaction ou .data)
+      const data = payload.transaction || payload.data || payload;
 
-      // Validar se temos a transação no banco
-      const transaction = await storage.getPaymentTransactionByGatewayId(transactionId);
+      // Identificadores possíveis
+      const transactionId = data.transaction_id || data.transactionId || data.id || payload.transaction_id || payload.id;
+      const externalId = data.external_id || data.externalId || data.reference || payload.external_id || payload.externalId;
 
-      if (!transaction) {
-        console.warn('⚠️ CODEXPAY: Transação não encontrada no banco:', transactionId);
-        return res.status(404).json({ error: 'Transaction not found' });
+      console.log(`🔍 CODEXPAY: Identificadores extraídos - transactionId: ${transactionId}, externalId: ${externalId}`);
+
+      // 1. Buscar transação no banco (tentar pelo ID do gateway primeiro)
+      let transaction;
+      if (transactionId) {
+        transaction = await storage.getPaymentTransactionByGatewayId(String(transactionId));
       }
 
+      // 2. Se não achou, tentar pelo ID externo (nossa referência deposit_...)
+      if (!transaction && externalId) {
+        console.log(`🔍 CODEXPAY: Tentando localizar transação pelo external_id: ${externalId}`);
+        transaction = await storage.getPaymentTransactionByGatewayId(String(externalId));
+      }
+
+      if (!transaction) {
+        console.warn('⚠️ CODEXPAY: Transação não identificada no banco.');
+        // Retornamos 200 para que o gateway pare de enviar, mas avisamos no log
+        return res.status(200).json({ success: false, message: 'Transaction not found, but acknowledged' });
+      }
+
+      console.log(`✅ CODEXPAY: Transação localizada: ID=${transaction.id}, Status Atual=${transaction.status}`);
+
+      // Evitar reprocessamento
       if (transaction.status === 'completed' || transaction.status === 'approved') {
-        console.log('ℹ️ CODEXPAY: Transação já processada anteriormente:', transaction.id);
+        console.log('ℹ️ CODEXPAY: Transação já processada anteriormente.');
         return res.json({ success: true, message: 'Already processed' });
       }
 
-      // Processar evento baseado no status
-      const isSuccess = ['PAID', 'COMPLETED', 'COMPLETO', 'APPROVED', 'SUCESSO'].includes(status);
+      // 3. Verificar Status
+      const statusStr = String(data.status || payload.status || "").toUpperCase();
+      const isSuccess = ['PAID', 'COMPLETED', 'COMPLETO', 'APPROVED', 'SUCESSO', 'CONCLUIDO', 'PAGO'].includes(statusStr);
 
-      if (isSuccess && type === 'DEPOSIT') {
-        // Depósito aprovado - creditar saldo
-        console.log(`✅ CODEXPAY: Processando depósito aprovado para transação ${transaction.id}`);
+      console.log(`ℹ️ CODEXPAY: Status recebido: ${statusStr}, Resultado: ${isSuccess ? 'SUCESSO' : 'OUTRO'}`);
 
-        const updatedTransaction = await storage.updatePaymentTransactionStatus(
-          transaction.id,
-          'completed',
-          undefined,
-          undefined,
-          payload
-        );
+      if (isSuccess) {
+        // Obter tipo do nosso banco (mais seguro que o do payload)
+        const type = transaction.type;
 
-        if (updatedTransaction && updatedTransaction.userId) {
-          const userId = updatedTransaction.userId;
-          const depositAmount = updatedTransaction.amount;
+        if (type === 'deposit') {
+          console.log(`💰 CODEXPAY: Processando DEPOSITO de R$ ${transaction.amount} para usuário ${transaction.userId}`);
 
-          try {
-            // ==== INÍCIO PROCESSAMENTO DE BÔNUS DE PRIMEIRO DEPÓSITO ====
-            const systemSettings = await storage.getSystemSettings();
+          // Atualizar status no banco
+          const updatedTransaction = await storage.updatePaymentTransactionStatus(
+            transaction.id,
+            'completed',
+            String(transactionId || transaction.externalId),
+            undefined,
+            payload
+          );
 
-            if (systemSettings?.firstDepositBonusEnabled) {
-              const hasBonus = await storage.hasUserReceivedFirstDepositBonus(userId);
+          if (updatedTransaction) {
+            const userId = updatedTransaction.userId;
+            const depositAmount = Number(updatedTransaction.amount);
 
-              if (!hasBonus) {
-                let bonusAmount = 0;
-                if (systemSettings.firstDepositBonusPercentage > 0) {
-                  bonusAmount = (depositAmount * systemSettings.firstDepositBonusPercentage) / 100;
-                  if (systemSettings.firstDepositBonusMaxAmount > 0 && bonusAmount > systemSettings.firstDepositBonusMaxAmount) {
-                    bonusAmount = systemSettings.firstDepositBonusMaxAmount;
+            // Processar Bônus
+            try {
+              const systemSettings = await storage.getSystemSettings();
+              if (systemSettings?.firstDepositBonusEnabled) {
+                const hasBonus = await storage.hasUserReceivedFirstDepositBonus(userId);
+                if (!hasBonus) {
+                  console.log(`🎁 CODEXPAY: Aplicando bônus de primeiro depósito para usuário ${userId}`);
+                  let bonusAmount = 0;
+                  if (systemSettings.firstDepositBonusPercentage > 0) {
+                    bonusAmount = (depositAmount * systemSettings.firstDepositBonusPercentage) / 100;
+                    if (systemSettings.firstDepositBonusMaxAmount > 0 && bonusAmount > systemSettings.firstDepositBonusMaxAmount) {
+                      bonusAmount = systemSettings.firstDepositBonusMaxAmount;
+                    }
+                  } else {
+                    bonusAmount = systemSettings.firstDepositBonusAmount;
                   }
-                } else {
-                  bonusAmount = systemSettings.firstDepositBonusAmount;
-                }
 
-                bonusAmount = parseFloat(bonusAmount.toFixed(2));
+                  bonusAmount = parseFloat(bonusAmount.toFixed(2));
 
-                if (bonusAmount > 0) {
-                  const rolloverAmount = bonusAmount * systemSettings.firstDepositBonusRollover;
-                  const expirationDays = systemSettings.firstDepositBonusExpiration || 7;
-                  const expirationDate = new Date();
-                  expirationDate.setDate(expirationDate.getDate() + expirationDays);
+                  if (bonusAmount > 0) {
+                    const rolloverAmount = bonusAmount * systemSettings.firstDepositBonusRollover;
+                    const expirationDays = systemSettings.firstDepositBonusExpiration || 7;
+                    const expirationDate = new Date();
+                    expirationDate.setDate(expirationDate.getDate() + expirationDays);
 
-                  await storage.createUserBonus({
-                    userId,
-                    type: "first_deposit",
-                    amount: bonusAmount,
-                    remainingAmount: bonusAmount,
-                    rolloverAmount,
-                    status: "active",
-                    expiresAt: expirationDate,
-                    relatedTransactionId: updatedTransaction.id
-                  });
+                    await storage.createUserBonus({
+                      userId,
+                      type: "first_deposit",
+                      amount: bonusAmount,
+                      remainingAmount: bonusAmount,
+                      rolloverAmount,
+                      status: "active",
+                      expiresAt: expirationDate,
+                      relatedTransactionId: updatedTransaction.id
+                    });
 
-                  await storage.updateUserBonusBalance(userId, bonusAmount);
+                    await storage.updateUserBonusBalance(userId, bonusAmount);
+                  }
                 }
               }
+            } catch (bonusErr) {
+              console.error("❌ CODEXPAY: Erro ao processar bônus no webhook:", bonusErr);
             }
-            // ==== FIM PROCESSAMENTO DE BÔNUS ====
 
-            // Atualizar saldo principal do usuário (passando o valor a ADICIONAR, não o total)
+            // Atualizar saldo principal
             const user = await storage.updateUserBalance(userId, depositAmount);
+            console.log(`✅ CODEXPAY: Saldo principal atualizado. Novo saldo: ${user?.balance}`);
 
-            // Criar registro da transação financeira para o extrato
+            // Registro no extrato
             await storage.createTransaction({
               userId,
               type: "deposit",
@@ -7048,56 +7145,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
               description: "Depósito via CodexPay (PIX)",
               relatedId: updatedTransaction.id,
             });
-
-            console.log('✅ CODEXPAY: Depósito creditado e saldo atualizado:', {
-              userId,
-              amount: depositAmount,
-              newBalance: user?.balance
-            });
-          } catch (balanceError) {
-            console.error('🔥 CODEXPAY: Erro ao atualizar saldo/bônus:', balanceError);
           }
+        } else if (type === 'withdrawal') {
+          console.log(`💸 CODEXPAY: Processando SAQUE de R$ ${transaction.amount} para usuário ${transaction.userId}`);
+          await storage.updatePaymentTransactionStatus(transaction.id, 'completed', undefined, undefined, payload);
         }
-      } else if (isSuccess && type === 'WITHDRAWAL') {
-        // Saque aprovado
-        await storage.updatePaymentTransactionStatus(transaction.id, 'completed');
+      } else if (['FAILED', 'REJECTED', 'CANCELLED', 'FALHOU', 'REJEITADO'].includes(statusStr)) {
+        console.log(`❌ CODEXPAY: Pagamento falhou/rejeitado.`);
+        await storage.updatePaymentTransactionStatus(transaction.id, 'rejected', undefined, undefined, payload);
 
-        // Se estiver vinculado à tabela de saques (withdrawals), atualizar também
-        const withdrawalId = (transaction.gatewayResponse as any)?.withdrawalId || transaction.externalId?.replace('withdrawal_', '');
-        if (withdrawalId && !isNaN(parseInt(withdrawalId))) {
-          await storage.updateWithdrawalStatus(parseInt(withdrawalId), 'approved', 0, undefined, 'Processado via CodexPay');
-        }
-
-        console.log('✅ CODEXPAY: Saque aprovado:', transaction.id);
-      } else if (['FAILED', 'REJECTED', 'CANCELLED', 'FALHOU', 'REJEITADO'].includes(status)) {
-        // Falhou - atualizar status e devolver saldo se for saque
-        await storage.updatePaymentTransactionStatus(transaction.id, 'rejected');
-
-        if (type === 'WITHDRAWAL') {
-          const withdrawalId = (transaction.gatewayResponse as any)?.withdrawalId || transaction.externalId?.replace('withdrawal_', '');
-          if (withdrawalId && !isNaN(parseInt(withdrawalId))) {
-            await storage.updateWithdrawalStatus(parseInt(withdrawalId), 'rejected', 0, 'Falha no processamento pelo gateway');
-          }
-
-          const user = await storage.updateUserBalance(transaction.userId, transaction.amount);
-
-          await storage.createTransaction({
-            userId: transaction.userId,
-            type: "deposit",
-            amount: transaction.amount,
-            description: "Estorno de saque rejeitado (CodexPay)",
-            relatedId: transaction.id,
-          });
-
-          console.log('💰 CODEXPAY: Saldo devolvido por saque rejeitado:', {
-            userId: transaction.userId,
-            amount: transaction.amount,
-            newBalance: user?.balance
-          });
+        // Se for saque, devolver o valor ao saldo do usuário
+        if (transaction.type === 'withdrawal') {
+          await storage.updateUserBalance(transaction.userId, Number(transaction.amount));
+          console.log(`💰 CODEXPAY: Saldo devolvido ao usuário ${transaction.userId} devido a falha no saque.`);
         }
       }
 
-      res.json({ success: true, message: 'Webhook processed successfully' });
+      res.status(200).json({ success: true });
+
     } catch (error) {
       console.error('🔥 CODEXPAY: Erro ao processar webhook:', error);
       res.status(500).json({
