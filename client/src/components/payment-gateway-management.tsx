@@ -246,6 +246,7 @@ export function PaymentGatewayManagement() {
     { value: "pushinpay", label: "Pushin Pay" },
     { value: "ezzebank", label: "EZZEBANK (PIX)" },
     { value: "codexpay", label: "CodexPay (PIX)" },
+    { value: "asaas", label: "Asaas (PIX)" },
     { value: "mercadopago", label: "Mercado Pago" },
     { value: "pagseguro", label: "PagSeguro" },
     { value: "paypal", label: "PayPal" }

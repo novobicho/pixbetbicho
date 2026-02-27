@@ -369,6 +369,15 @@ export function DepositDialog({
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || result.message || "Erro ao criar pagamento via CodexPay");
         return result;
+      } else if (gateway?.type === "asaas") {
+        // Asaas (PIX)
+        const res = await apiRequest("POST", "/api/asaas/create-pix-payment", {
+          amount: data.amount,
+          useBonus: data.useBonus
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || result.message || "Erro ao criar pagamento via Asaas");
+        return result;
       } else {
         throw new Error("Método de pagamento não suportado");
       }
