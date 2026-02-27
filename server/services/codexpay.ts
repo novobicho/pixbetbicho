@@ -137,14 +137,16 @@ export class CodexPayService {
             externalId: payment.externalId
         });
 
+        const cleanDocument = payment.customerDocument.replace(/\D/g, '');
+
         const payload = {
             amount: payment.amount,
             external_id: payment.externalId,
-            clientCallbackUrl: payment.callbackUrl,
+            callbackUrl: payment.callbackUrl,
             payer: {
                 name: payment.customerName,
                 email: payment.customerEmail,
-                document: payment.customerDocument
+                document: cleanDocument
             }
         };
 
@@ -167,6 +169,17 @@ export class CodexPayService {
             };
         } catch (error) {
             console.error('🔥 CODEXPAY: Erro ao criar pagamento PIX:', error);
+            throw error;
+        }
+    }
+
+    async getPaymentStatus(paymentId: string): Promise<any> {
+        try {
+            console.log('🔍 CODEXPAY: Consultando status do pagamento:', paymentId);
+            const response = await this.makeRequest(`/api/payments/status/${paymentId}`, 'GET');
+            return response;
+        } catch (error) {
+            console.error('🔥 CODEXPAY: Erro ao consultar status do pagamento:', error);
             throw error;
         }
     }
@@ -206,6 +219,18 @@ export class CodexPayService {
         } catch (error) {
             console.error('🔥 CODEXPAY: Erro ao criar saque PIX:', error);
             throw error;
+        }
+    }
+
+    async getBalance(): Promise<number> {
+        try {
+            // Tentativa de obter o saldo do merchant
+            const response = await this.makeRequest('/api/merchants/balance', 'GET');
+            return response.balance || 0;
+        } catch (error) {
+            console.error('🔥 CODEXPAY: Erro ao consultar saldo:', error);
+            // Retorna 0 para evitar quebra no admin, mas loga o erro
+            return 0;
         }
     }
 }
