@@ -370,7 +370,7 @@ export type SystemSettings = {
 };
 
 // Payment Gateway Types
-export const paymentGatewayTypes = ["pushinpay", "mercadopago", "pagseguro", "paypal", "ezzebank", "codexpay"] as const;
+export const paymentGatewayTypes = ["pushinpay", "mercadopago", "pagseguro", "paypal", "ezzebank", "codexpay", "asaas"] as const;
 export const PaymentGatewayTypeEnum = z.enum(paymentGatewayTypes);
 export type PaymentGatewayType = z.infer<typeof PaymentGatewayTypeEnum>;
 
