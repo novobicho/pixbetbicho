@@ -4059,7 +4059,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Verificando transações do usuário ${userId}. Total: ${userTransactions.length}`);
 
-      // Filtrar apenas transações pendentes
+      // Filtrar apenas transações pendentes ou em processamento com ID externo
       const pendingTransactions = userTransactions.filter(
         t => (t.status === 'pending' || t.status === 'processing') && t.externalId
       );
@@ -4074,6 +4074,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`Verificando ${pendingTransactions.length} transações pendentes para o usuário ${userId}`);
 
+      // Iniciar serviço CodexPay uma vez para economizar recursos
+      const codexpayService = await (await import('./services/codexpay')).createCodexPayService();
+
       // Lista para armazenar resultados
       const results: any[] = [];
       let updatedCount = 0;
@@ -4083,336 +4086,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const transaction of pendingTransactions) {
         try {
           checkedCount++;
-          console.log(`Verificando transação ID: ${transaction.id}, Externa ID: ${transaction.externalId}`);
+          console.log(`[Transação ${transaction.id}] Verificando status (Gateway: ${transaction.gatewayId})...`);
 
           // Buscar gateway
           const gateway = await storage.getPaymentGateway(transaction.gatewayId);
-
           if (!gateway) {
-            results.push({
-              transactionId: transaction.id,
-              status: "error",
-              message: "Gateway não encontrado"
-            });
+            results.push({ transactionId: transaction.id, status: "error", message: "Gateway não encontrado" });
             continue;
           }
 
-          // Verificar se é Pushin Pay
+          let verified = false;
+
+          // --- LOGICA PUSHIN PAY ---
           if (gateway.type === 'pushinpay' && transaction.externalId) {
-            // Obter token do gateway
             const token = process.env.PUSHIN_PAY_TOKEN;
             if (!token) {
-              results.push({
-                transactionId: transaction.id,
-                status: "error",
-                message: "Token da API não configurado"
-              });
+              results.push({ transactionId: transaction.id, status: "error", message: "Token PushinPay não configurado" });
               continue;
             }
 
-            // Tentativa 1: Verificar com API V2
-            console.log(`[Transação ${transaction.id}] Tentando verificar com API V2...`);
-            let verifiedWithV2 = false;
-
+            // Tentar API V2
             try {
-              const apiUrlV2 = `https://api.pushinpay.com.br/api/v2/transactions/${transaction.externalId}`;
-
-              const responseV2 = await fetch(apiUrlV2, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Accept': 'application/json'
-                }
+              const responseV2 = await fetch(`https://api.pushinpay.com.br/api/v2/transactions/${transaction.externalId}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
               });
 
               if (responseV2.ok) {
                 const paymentData = await responseV2.json();
-                console.log(`[Transação ${transaction.id}] Resposta API V2:`, paymentData);
-
-                // Se o pagamento foi concluído com a API V2
-                if (paymentData.status === 'PAID' || paymentData.status === 'COMPLETED' ||
-                  paymentData.status === 'paid' || paymentData.status === 'completed') {
-
-                  // Verificação adicional de segurança antes de atualizar o status
-                  if (transaction.userId !== userId) {
-                    console.error(`ALERTA DE SEGURANÇA: Tentativa de processar pagamento de outro usuário.
-                      Transação ID: ${transaction.id}
-                      Pertence ao usuário: ${transaction.userId}
-                      Usuário autenticado: ${userId}`);
-
-                    results.push({
-                      transactionId: transaction.id,
-                      status: "error",
-                      message: "Erro de segurança: transação pertence a outro usuário"
-                    });
-
-                    continue; // Pular esta transação
-                  }
-
-                  // Verificar se o usuário ainda existe
-                  const userV2 = await storage.getUser(transaction.userId);
-                  if (!userV2) {
-                    console.error(`ALERTA DE SEGURANÇA: Usuário ${transaction.userId} não existe mais, mas possui transação ${transaction.id}`);
-
-                    results.push({
-                      transactionId: transaction.id,
-                      status: "error",
-                      message: "Erro de segurança: usuário não encontrado"
-                    });
-
-                    continue; // Pular esta transação
-                  }
-
-                  // Atualizar status da transação
-                  await storage.updateTransactionStatus(
-                    transaction.id,
-                    "completed",
-                    transaction.externalId,
-                    transaction.externalUrl || undefined,
-                    paymentData
-                  );
-
-                  // Log de auditoria para rastreamento financeiro
-                  console.log(`TRANSAÇÃO CONCLUÍDA: ID ${transaction.id}, Usuário ${userV2.username} (${userV2.id}), Valor R$${transaction.amount}`);
-
-                  // Atualizar saldo do usuário
+                if (['PAID', 'COMPLETED', 'paid', 'completed'].includes(paymentData.status)) {
+                  await storage.updateTransactionStatus(transaction.id, "completed", transaction.externalId, transaction.externalUrl || undefined, paymentData);
                   await storage.updateUserBalance(transaction.userId, transaction.amount);
-
                   updatedCount++;
-                  results.push({
-                    transactionId: transaction.id,
-                    status: "completed",
-                    message: "Pagamento confirmado (API V2)"
-                  });
-
-                  verifiedWithV2 = true;
-                } else {
-                  // Se não estiver pago ainda, registrar o status
-                  results.push({
-                    transactionId: transaction.id,
-                    status: "pending",
-                    message: `Status atual: ${paymentData.status} (API V2)`,
-                    apiStatus: paymentData.status
-                  });
-
-                  verifiedWithV2 = true;
+                  results.push({ transactionId: transaction.id, status: "completed", message: "Confirmado via PushinPay V2" });
+                  verified = true;
                 }
-              } else {
-                console.log(`[Transação ${transaction.id}] API V2 retornou erro ${responseV2.status}`);
               }
-            } catch (v2Error) {
-              console.log(`[Transação ${transaction.id}] Erro ao acessar API V2:`, v2Error);
+            } catch (err) { console.error(`[Transação ${transaction.id}] Erro V2:`, err); }
+
+            // Tentar API V1 se não confirmado
+            if (!verified) {
+              try {
+                const responseV1 = await fetch(`https://api.pushinpay.com.br/api/pix/v1/transaction/${transaction.externalId}`, {
+                  headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+                });
+
+                if (responseV1.ok) {
+                  const paymentData = await responseV1.json();
+                  if (['PAID', 'COMPLETED', 'paid', 'completed'].includes(paymentData.status)) {
+                    await storage.updateTransactionStatus(transaction.id, "completed", transaction.externalId, transaction.externalUrl || undefined, paymentData);
+                    await storage.updateUserBalance(transaction.userId, transaction.amount);
+                    updatedCount++;
+                    results.push({ transactionId: transaction.id, status: "completed", message: "Confirmado via PushinPay V1" });
+                    verified = true;
+                  }
+                }
+              } catch (err) { console.error(`[Transação ${transaction.id}] Erro V1:`, err); }
             }
-
-            // Se já verificou com V2, pular para próxima transação
-            if (verifiedWithV2) {
-              continue;
-            }
-
-            // Tentativa 2: Verificar com API V1
-            console.log(`[Transação ${transaction.id}] Tentando verificar com API V1...`);
-            let verifiedWithV1 = false;
-
+          }
+          // --- LOGICA CODEX PAY ---
+          else if (gateway.type === 'codexpay' && transaction.externalId) {
             try {
-              const apiUrlV1 = `https://api.pushinpay.com.br/api/pix/v1/transaction/${transaction.externalId}`;
+              const paymentData = await codexpayService.getPaymentStatus(transaction.externalId);
+              const status = String(paymentData.status || paymentData.transaction?.status || "").toUpperCase();
 
-              const responseV1 = await fetch(apiUrlV1, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Accept': 'application/json'
-                }
-              });
-
-              if (responseV1.ok) {
-                const paymentData = await responseV1.json();
-                console.log(`[Transação ${transaction.id}] Resposta API V1:`, paymentData);
-
-                // Se o pagamento foi concluído com a API V1
-                if (paymentData.status === 'PAID' || paymentData.status === 'COMPLETED' ||
-                  paymentData.status === 'paid' || paymentData.status === 'completed') {
-
-                  // Verificação adicional de segurança antes de atualizar o status
-                  if (transaction.userId !== userId) {
-                    console.error(`ALERTA DE SEGURANÇA: Tentativa de processar pagamento de outro usuário.
-                      Transação ID: ${transaction.id}
-                      Pertence ao usuário: ${transaction.userId}
-                      Usuário autenticado: ${userId}`);
-
-                    results.push({
-                      transactionId: transaction.id,
-                      status: "error",
-                      message: "Erro de segurança: transação pertence a outro usuário"
-                    });
-
-                    continue; // Pular esta transação
-                  }
-
-                  // Verificar se o usuário ainda existe
-                  const userV1 = await storage.getUser(transaction.userId);
-                  if (!userV1) {
-                    console.error(`ALERTA DE SEGURANÇA: Usuário ${transaction.userId} não existe mais, mas possui transação ${transaction.id}`);
-
-                    results.push({
-                      transactionId: transaction.id,
-                      status: "error",
-                      message: "Erro de segurança: usuário não encontrado"
-                    });
-
-                    continue; // Pular esta transação
-                  }
-
-                  // Atualizar status da transação
-                  await storage.updateTransactionStatus(
-                    transaction.id,
-                    "completed",
-                    transaction.externalId,
-                    transaction.externalUrl || undefined,
-                    paymentData
-                  );
-
-                  // Log de auditoria para rastreamento financeiro
-                  console.log(`TRANSAÇÃO CONCLUÍDA: ID ${transaction.id}, Usuário ${userV1.username} (${userV1.id}), Valor R$${transaction.amount}`);
-
-                  // Atualizar saldo do usuário
-                  await storage.updateUserBalance(transaction.userId, transaction.amount);
-
-                  updatedCount++;
-                  results.push({
-                    transactionId: transaction.id,
-                    status: "completed",
-                    message: "Pagamento confirmado (API V1)"
-                  });
-
-                  verifiedWithV1 = true;
-                } else {
-                  // Se não estiver pago ainda, registrar o status
-                  results.push({
-                    transactionId: transaction.id,
-                    status: "pending",
-                    message: `Status atual: ${paymentData.status} (API V1)`,
-                    apiStatus: paymentData.status
-                  });
-
-                  verifiedWithV1 = true;
-                }
-              } else {
-                console.log(`[Transação ${transaction.id}] API V1 retornou erro ${responseV1.status}`);
+              if (['PAID', 'COMPLETED', 'COMPLETO', 'APPROVED', 'SUCESSO'].includes(status)) {
+                await storage.updateTransactionStatus(transaction.id, "completed", transaction.externalId, transaction.externalUrl || undefined, paymentData);
+                await storage.updateUserBalance(transaction.userId, transaction.amount);
+                updatedCount++;
+                results.push({ transactionId: transaction.id, status: "completed", message: "Confirmado via CodexPay API" });
+                verified = true;
               }
-            } catch (v1Error) {
-              console.log(`[Transação ${transaction.id}] Erro ao acessar API V1:`, v1Error);
+            } catch (err) {
+              console.error(`[Transação ${transaction.id}] Erro CodexPay:`, err);
             }
+          }
 
-            // Se já verificou com V1, pular para próxima transação
-            if (verifiedWithV1) {
-              continue;
-            }
-
-            // Verificação por tempo (se ambas as APIs falharem)
-            console.log(`[Transação ${transaction.id}] Ambas APIs falharam, verificando por tempo...`);
+          // --- LOGICA DE FALLBACK (TEMPO/DESENVOLVIMENTO) ---
+          if (!verified) {
             const transactionDate = new Date(transaction.createdAt);
             const now = new Date();
-            const hoursDiff = (now.getTime() - transactionDate.getTime()) / (1000 * 60 * 60);
-
-            // IMPORTANTE: MODO DE DESENVOLVIMENTO/TESTE
-            // No ambiente de desenvolvimento, consideramos o pagamento como concluído
-            // após 1 minuto para fins de teste, já que a API real pode não estar disponível
             const minutesDiff = (now.getTime() - transactionDate.getTime()) / (1000 * 60);
+            const hoursDiff = minutesDiff / 60;
             const isTestMode = process.env.NODE_ENV === 'development';
 
             if (isTestMode && minutesDiff > 1) {
-              console.log(`[DESENVOLVIMENTO] Transação ${transaction.id} aprovada automaticamente após ${minutesDiff.toFixed(1)} minutos (modo de teste)`);
-
-              // Verificar se o usuário ainda existe
-              const userDev = await storage.getUser(transaction.userId);
-              if (!userDev) {
-                results.push({
-                  transactionId: transaction.id,
-                  status: "error",
-                  message: "Erro de segurança: usuário não encontrado"
-                });
-                continue;
-              }
-
-              // Atualizar status da transação
-              await storage.updateTransactionStatus(
-                transaction.id,
-                "completed",
-                transaction.externalId,
-                transaction.externalUrl || undefined,
-                { autoApproved: true, reason: "Aprovado automaticamente em ambiente de desenvolvimento" }
-              );
-
-              // Log de auditoria para rastreamento financeiro
-              console.log(`TRANSAÇÃO CONCLUÍDA (DESENVOLVIMENTO): ID ${transaction.id}, Usuário ${userDev.username} (${userDev.id}), Valor R$${transaction.amount}`);
-
-              // Atualizar saldo do usuário
+              await storage.updateTransactionStatus(transaction.id, "completed", transaction.externalId, transaction.externalUrl || undefined, { autoApproved: true });
               await storage.updateUserBalance(transaction.userId, transaction.amount);
-
               updatedCount++;
-              results.push({
-                transactionId: transaction.id,
-                status: "completed",
-                message: "Pagamento confirmado automaticamente (ambiente de desenvolvimento)"
-              });
+              results.push({ transactionId: transaction.id, status: "completed", message: "Aprovado auto (Modo Teste)" });
             } else if (hoursDiff > 24) {
-              console.log(`[Transação ${transaction.id}] Tem mais de 24h (${hoursDiff.toFixed(1)}h), marcando como expirada`);
-
-              // Atualizar status para falha por tempo
-              await storage.updateTransactionStatus(
-                transaction.id,
-                "failed",
-                transaction.externalId,
-                transaction.externalUrl || undefined,
-                { reason: "Expirada por tempo (mais de 24h)" }
-              );
-
-              results.push({
-                transactionId: transaction.id,
-                status: "expired",
-                message: "Transação expirada (mais de 24h)"
-              });
+              await storage.updateTransactionStatus(transaction.id, "failed", transaction.externalId, transaction.externalUrl || undefined, { reason: "Expirada (24h+)" });
+              results.push({ transactionId: transaction.id, status: "expired", message: "Transação expirada" });
             } else {
-              console.log(`[Transação ${transaction.id}] Tem menos de 24h (${hoursDiff.toFixed(1)}h), mantendo pendente`);
-
-              results.push({
-                transactionId: transaction.id,
-                status: "pending",
-                message: "Transação ainda pendente, APIs indisponíveis"
-              });
+              results.push({ transactionId: transaction.id, status: "pending", message: "Aguardando confirmação do gateway" });
             }
-          } else {
-            // Outros gateways não suportados
-            results.push({
-              transactionId: transaction.id,
-              status: "skipped",
-              message: "Gateway não suportado ou sem ID externo"
-            });
           }
         } catch (txError) {
-          console.error(`[Transação ${transaction.id}] Erro na verificação:`, txError);
-
-          results.push({
-            transactionId: transaction.id,
-            status: "error",
-            message: `Erro inesperado: ${(txError as Error).message}`
-          });
+          console.error(`[Transação ${transaction.id}] Erro inesperado:`, txError);
+          results.push({ transactionId: transaction.id, status: "error", message: (txError as Error).message });
         }
       }
 
-      // Retornar resultados
       res.json({
         message: `Verificação concluída para ${pendingTransactions.length} transações`,
-        checkedCount: pendingTransactions.length,
+        checkedCount,
         updatedCount,
         results
       });
     } catch (error) {
-      console.error("Erro ao verificar transações pendentes:", error);
-      res.status(500).json({
-        message: "Erro ao verificar transações pendentes",
-        error: (error as Error).message
-      });
+      console.error("Erro geral no check-pending:", error);
+      res.status(500).json({ message: "Erro ao processar verificação" });
     }
   });
 
@@ -4536,6 +4319,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } catch (apiError: any) {
             console.error("Erro ao verificar pagamento na API:", apiError);
             return res.status(500).json({ message: `Erro ao verificar na API: ${apiError.message}` });
+          }
+        } else if (gateway.type === 'codexpay' && transaction.externalId) {
+          try {
+            console.log(`🔍 Verificando status da transação ${transaction.externalId} na API CodexPay`);
+            const codexpayService = await (await import('./services/codexpay')).createCodexPayService();
+            const paymentData = await codexpayService.getPaymentStatus(transaction.externalId);
+
+            console.log("Resposta da verificação CodexPay:", paymentData);
+
+            const status = String(paymentData.status || paymentData.transaction?.status || "").toUpperCase();
+
+            if (['PAID', 'COMPLETED', 'COMPLETO', 'APPROVED', 'SUCESSO'].includes(status)) {
+              // Atualizar status da transação
+              const updatedTransaction = await storage.updateTransactionStatus(
+                transactionId,
+                "completed",
+                transaction.externalId,
+                transaction.externalUrl || undefined,
+                paymentData
+              );
+
+              if (!updatedTransaction) {
+                return res.status(500).json({ message: "Falha ao atualizar status da transação" });
+              }
+
+              // Atualizar o saldo do usuário
+              const amountToAdd = Number(transaction.amount);
+              const user = await storage.updateUserBalance(transaction.userId, amountToAdd);
+
+              console.log(`✅ BALANCE UPDATED (CodexPay): User ID ${transaction.userId}, New balance: ${user?.balance}, Added: ${amountToAdd}`);
+
+              return res.json({
+                message: "Pagamento confirmado pela API da CodexPay",
+                status: "completed",
+                transaction: updatedTransaction
+              });
+            } else {
+              return res.json({
+                message: `Status atual na CodexPay: ${status}`,
+                status: transaction.status,
+                apiStatus: status,
+                transaction
+              });
+            }
+          } catch (apiError: any) {
+            console.error("Erro ao verificar pagamento na API CodexPay:", apiError);
+            return res.status(500).json({ message: `Erro ao verificar na API CodexPay: ${apiError.message}` });
           }
         } else {
           // Para outros gateways ou sem ID externo, apenas notificar
@@ -6967,13 +6797,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (transaction.type === 'withdrawal') {
             const user = await storage.getUser(transaction.userId);
             if (user) {
-              const newBalance = user.balance + transaction.amount;
-              await storage.updateUserBalance(user.id, newBalance);
+              const updatedUser = await storage.updateUserBalance(transaction.userId, transaction.amount);
 
               console.log('💰 EZZEBANK: Saldo devolvido por saque rejeitado:', {
-                userId: user.id,
+                userId: transaction.userId,
                 amount: transaction.amount,
-                newBalance
+                newBalance: updatedUser?.balance
               });
             }
           }
@@ -7036,7 +6865,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         payment: {
           id: payment.id,
-          transactionId: transactionId, // Importante para o polling no frontend
+          transactionId: (transactionId as any).id || transactionId, // Garantir que enviamos apenas o ID numérico
           amount: payment.amount,
           qrCode: payment.qrCode,
           status: payment.status
@@ -7141,7 +6970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Transaction not found' });
       }
 
-      if (transaction.status === 'approved' || transaction.status === 'completed') {
+      if (transaction.status === 'completed' || transaction.status === 'approved') {
         console.log('ℹ️ CODEXPAY: Transação já processada anteriormente:', transaction.id);
         return res.json({ success: true, message: 'Already processed' });
       }
@@ -7152,29 +6981,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isSuccess && type === 'DEPOSIT') {
         // Depósito aprovado - creditar saldo
         console.log(`✅ CODEXPAY: Processando depósito aprovado para transação ${transaction.id}`);
-        await storage.updatePaymentTransactionStatus(transaction.id, 'approved');
 
-        const user = await storage.getUser(transaction.userId);
-        if (user) {
-          const newBalance = Number(user.balance) + Number(transaction.amount);
-          await storage.updateUserBalance(user.id, newBalance);
+        const updatedTransaction = await storage.updatePaymentTransactionStatus(
+          transaction.id,
+          'completed',
+          undefined,
+          undefined,
+          payload
+        );
 
-          console.log('✅ CODEXPAY: Depósito creditado:', {
-            userId: user.id,
-            amount: transaction.amount,
-            newBalance
-          });
+        if (updatedTransaction && updatedTransaction.userId) {
+          const userId = updatedTransaction.userId;
+          const depositAmount = updatedTransaction.amount;
+
+          try {
+            // ==== INÍCIO PROCESSAMENTO DE BÔNUS DE PRIMEIRO DEPÓSITO ====
+            const systemSettings = await storage.getSystemSettings();
+
+            if (systemSettings?.firstDepositBonusEnabled) {
+              const hasBonus = await storage.hasUserReceivedFirstDepositBonus(userId);
+
+              if (!hasBonus) {
+                let bonusAmount = 0;
+                if (systemSettings.firstDepositBonusPercentage > 0) {
+                  bonusAmount = (depositAmount * systemSettings.firstDepositBonusPercentage) / 100;
+                  if (systemSettings.firstDepositBonusMaxAmount > 0 && bonusAmount > systemSettings.firstDepositBonusMaxAmount) {
+                    bonusAmount = systemSettings.firstDepositBonusMaxAmount;
+                  }
+                } else {
+                  bonusAmount = systemSettings.firstDepositBonusAmount;
+                }
+
+                bonusAmount = parseFloat(bonusAmount.toFixed(2));
+
+                if (bonusAmount > 0) {
+                  const rolloverAmount = bonusAmount * systemSettings.firstDepositBonusRollover;
+                  const expirationDays = systemSettings.firstDepositBonusExpiration || 7;
+                  const expirationDate = new Date();
+                  expirationDate.setDate(expirationDate.getDate() + expirationDays);
+
+                  await storage.createUserBonus({
+                    userId,
+                    type: "first_deposit",
+                    amount: bonusAmount,
+                    remainingAmount: bonusAmount,
+                    rolloverAmount,
+                    status: "active",
+                    expiresAt: expirationDate,
+                    relatedTransactionId: updatedTransaction.id
+                  });
+
+                  await storage.updateUserBonusBalance(userId, bonusAmount);
+                }
+              }
+            }
+            // ==== FIM PROCESSAMENTO DE BÔNUS ====
+
+            // Atualizar saldo principal do usuário (passando o valor a ADICIONAR, não o total)
+            const user = await storage.updateUserBalance(userId, depositAmount);
+
+            // Criar registro da transação financeira para o extrato
+            await storage.createTransaction({
+              userId,
+              type: "deposit",
+              amount: depositAmount,
+              description: "Depósito via CodexPay (PIX)",
+              relatedId: updatedTransaction.id,
+            });
+
+            console.log('✅ CODEXPAY: Depósito creditado e saldo atualizado:', {
+              userId,
+              amount: depositAmount,
+              newBalance: user?.balance
+            });
+          } catch (balanceError) {
+            console.error('🔥 CODEXPAY: Erro ao atualizar saldo/bônus:', balanceError);
+          }
         }
       } else if (isSuccess && type === 'WITHDRAWAL') {
         // Saque aprovado
-        await storage.updatePaymentTransactionStatus(transaction.id, 'approved');
+        await storage.updatePaymentTransactionStatus(transaction.id, 'completed');
 
         // Se estiver vinculado à tabela de saques (withdrawals), atualizar também
-        // Vamos buscar pelo externalId que formatamos antes: `withdrawal_${id}`
-        // Ou melhor, o transaction já tem o internal id se salvarmos no gatewayResponse
-        const withdrawalId = (transaction.gatewayResponse as any)?.withdrawalId;
-        if (withdrawalId) {
-          await storage.updateWithdrawalStatus(withdrawalId, 'approved', 0, undefined, 'Processado via CodexPay');
+        const withdrawalId = (transaction.gatewayResponse as any)?.withdrawalId || transaction.externalId?.replace('withdrawal_', '');
+        if (withdrawalId && !isNaN(parseInt(withdrawalId))) {
+          await storage.updateWithdrawalStatus(parseInt(withdrawalId), 'approved', 0, undefined, 'Processado via CodexPay');
         }
 
         console.log('✅ CODEXPAY: Saque aprovado:', transaction.id);
@@ -7183,23 +7074,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updatePaymentTransactionStatus(transaction.id, 'rejected');
 
         if (type === 'WITHDRAWAL') {
-          // Se estiver vinculado à tabela de saques (withdrawals), atualizar para rejected
-          const withdrawalId = (transaction.gatewayResponse as any)?.withdrawalId;
-          if (withdrawalId) {
-            await storage.updateWithdrawalStatus(withdrawalId, 'rejected', 0, 'Falha no processamento pelo gateway');
+          const withdrawalId = (transaction.gatewayResponse as any)?.withdrawalId || transaction.externalId?.replace('withdrawal_', '');
+          if (withdrawalId && !isNaN(parseInt(withdrawalId))) {
+            await storage.updateWithdrawalStatus(parseInt(withdrawalId), 'rejected', 0, 'Falha no processamento pelo gateway');
           }
 
-          const user = await storage.getUser(transaction.userId);
-          if (user) {
-            const newBalance = Number(user.balance) + Number(transaction.amount);
-            await storage.updateUserBalance(user.id, newBalance);
+          const user = await storage.updateUserBalance(transaction.userId, transaction.amount);
 
-            console.log('💰 CODEXPAY: Saldo devolvido por saque rejeitado:', {
-              userId: user.id,
-              amount: transaction.amount,
-              newBalance
-            });
-          }
+          await storage.createTransaction({
+            userId: transaction.userId,
+            type: "deposit",
+            amount: transaction.amount,
+            description: "Estorno de saque rejeitado (CodexPay)",
+            relatedId: transaction.id,
+          });
+
+          console.log('💰 CODEXPAY: Saldo devolvido por saque rejeitado:', {
+            userId: transaction.userId,
+            amount: transaction.amount,
+            newBalance: user?.balance
+          });
         }
       }
 

@@ -109,6 +109,8 @@ export interface IStorage {
   updateUserBonusBalance(userId: number, amount: number): Promise<void>;
   getUserActiveBonus(userId: number): Promise<UserBonus | undefined>;
   deductFromBonusBalance(userId: number, amount: number): Promise<{ id: number, amountUsed: number }[]>;
+  hasUserReceivedFirstDepositBonus(userId: number): Promise<boolean>;
+  hasUserReceivedSignupBonus(userId: number): Promise<boolean>;
 
   // Bet Management
   getBet(id: number): Promise<Bet | undefined>;
@@ -195,6 +197,8 @@ export interface IStorage {
   getPaymentTransaction(id: number): Promise<PaymentTransaction | undefined>;
   getUserTransactions(userId: number): Promise<PaymentTransaction[]>;
   updateTransactionStatus(id: number, status: string, externalId?: string, externalUrl?: string, response?: any): Promise<PaymentTransaction | undefined>;
+  updatePaymentTransactionStatus(id: number, status: string, externalId?: string, externalUrl?: string, response?: any): Promise<PaymentTransaction | undefined>;
+  getPaymentTransactionByGatewayId(gatewayTransactionId: string): Promise<PaymentTransaction | undefined>;
 
   // Withdrawal Management
   createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal>;
@@ -4780,6 +4784,42 @@ export class DatabaseStorage implements IStorage {
       return updatedTransaction;
     } catch (error) {
       console.error(`Error updating transaction status with ID ${id}:`, error);
+      return undefined;
+    }
+  }
+
+  async updatePaymentTransactionStatus(
+    id: number,
+    status: string,
+    externalId?: string,
+    externalUrl?: string,
+    response?: any
+  ): Promise<PaymentTransaction | undefined> {
+    return this.updateTransactionStatus(id, status, externalId, externalUrl, response);
+  }
+
+  async getPaymentTransactionByGatewayId(gatewayTransactionId: string): Promise<PaymentTransaction | undefined> {
+    try {
+      // First try to match by externalId
+      let [transaction] = await db
+        .select()
+        .from(paymentTransactions)
+        .where(eq(paymentTransactions.externalId, gatewayTransactionId));
+
+      if (transaction) return transaction;
+
+      // If not found, try to match by ID if gatewayTransactionId is numeric
+      const numericId = parseInt(gatewayTransactionId);
+      if (!isNaN(numericId)) {
+        [transaction] = await db
+          .select()
+          .from(paymentTransactions)
+          .where(eq(paymentTransactions.id, numericId));
+      }
+
+      return transaction;
+    } catch (error) {
+      console.error(`Error getting payment transaction by gateway ID ${gatewayTransactionId}:`, error);
       return undefined;
     }
   }
