@@ -1,4 +1,6 @@
-// Usando fetch nativo do Node.js
+// CodexPay Payment Service
+// API Base: https://api.codexpay.com.br
+// Docs: https://api.codexpay.app/api-docs/
 
 export interface CodexPayConfig {
     clientId: string;
@@ -38,7 +40,7 @@ export interface CodexPayWithdrawalResponse {
     id: string;
     status: string;
     amount: number;
-    fee: number;
+    fee?: number;
 }
 
 export class CodexPayService {
@@ -50,7 +52,8 @@ export class CodexPayService {
         this.config = {
             clientId,
             clientSecret,
-            baseUrl: 'https://api.codexpay.app'
+            // URL CORRETA conforme documentação oficial: https://api.codexpay.com.br
+            baseUrl: 'https://api.codexpay.com.br'
         };
 
         if (!this.config.clientId || !this.config.clientSecret) {
@@ -64,7 +67,7 @@ export class CodexPayService {
     }
 
     private async getAccessToken(): Promise<string> {
-        // Verificar se o token ainda é válido (assumindo 2 horas de validade padrão, com margem)
+        // Verificar se o token ainda é válido (com margem de 5 min)
         if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
             return this.accessToken;
         }
@@ -86,16 +89,20 @@ export class CodexPayService {
 
             if (!response.ok) {
                 const error = await response.text();
-                throw new Error(`CODEXPAY Auth Error: ${response.status} ${error}`);
+                throw new Error(`CODEXPAY Auth Error: ${response.status} - ${error}`);
             }
 
             const data = await response.json();
 
-            this.accessToken = data.token;
-            // Definimos uma expiração conservadora (1 hora)
-            this.tokenExpiry = new Date(Date.now() + (60 * 60 * 1000));
+            if (!data.token) {
+                throw new Error(`CODEXPAY: Token não recebido na resposta de autenticação`);
+            }
 
-            console.log('✅ CODEXPAY: Token de acesso obtido com sucesso!');
+            this.accessToken = data.token;
+            // Token conservador: 55 minutos (JWT expira em 1h, renovamos antes)
+            this.tokenExpiry = new Date(Date.now() + (55 * 60 * 1000));
+
+            console.log('✅ CODEXPAY: Token de acesso obtido com sucesso! User:', data.user?.email || data.user?.name);
             return this.accessToken!;
         } catch (error) {
             console.error('🔥 CODEXPAY: Erro ao obter token de acesso:', error);
@@ -113,36 +120,55 @@ export class CodexPayService {
         };
 
         try {
-            const response = await fetch(`${this.config.baseUrl}${endpoint}`, {
+            const url = `${this.config.baseUrl}${endpoint}`;
+            console.log(`📡 CODEXPAY: ${method} ${url}`, body ? JSON.stringify(body) : '');
+
+            const response = await fetch(url, {
                 method,
                 headers,
                 body: body ? JSON.stringify(body) : undefined,
             });
 
-            if (!response.ok) {
-                const error = await response.text();
-                throw new Error(`CODEXPAY API Error: ${response.status} ${error}`);
+            const responseText = await response.text();
+            let responseData: any;
+
+            try {
+                responseData = JSON.parse(responseText);
+            } catch {
+                responseData = { raw: responseText };
             }
 
-            return await response.json();
+            if (!response.ok) {
+                console.error(`🔥 CODEXPAY: Erro HTTP ${response.status} em ${method} ${endpoint}:`, responseData);
+                throw new Error(`CODEXPAY API Error ${response.status}: ${responseText}`);
+            }
+
+            return responseData;
         } catch (error) {
             console.error(`🔥 CODEXPAY: Erro na requisição ${method} ${endpoint}:`, error);
             throw error;
         }
     }
 
+    /**
+     * Criar pagamento PIX (depósito)
+     * POST /api/payments/deposit
+     * Retorna QR Code para o usuário pagar
+     */
     async createPixPayment(payment: CodexPayPixPayment): Promise<CodexPayPixResponse> {
         console.log('💎 CODEXPAY: Criando pagamento PIX:', {
             amount: payment.amount,
             externalId: payment.externalId
         });
 
+        // Remover caracteres não numéricos do CPF
         const cleanDocument = payment.customerDocument.replace(/\D/g, '');
 
-        const payload = {
+        // Payload conforme documentação oficial
+        const payload: any = {
             amount: payment.amount,
             external_id: payment.externalId,
-            callbackUrl: payment.callbackUrl,
+            clientCallbackUrl: payment.callbackUrl,  // Campo correto: clientCallbackUrl
             payer: {
                 name: payment.customerName,
                 email: payment.customerEmail,
@@ -153,18 +179,24 @@ export class CodexPayService {
         try {
             const response = await this.makeRequest('/api/payments/deposit', 'POST', payload);
 
-            const qrData = response.qrCodeResponse;
+            // A API retorna: { message, qrCodeResponse: { transactionId, status, qrcode, amount } }
+            const qrData = response.qrCodeResponse || response;
+
+            if (!qrData) {
+                throw new Error('CODEXPAY: Resposta inválida - qrCodeResponse não encontrado');
+            }
 
             console.log('✅ CODEXPAY: Pagamento PIX criado com sucesso:', {
                 transactionId: qrData.transactionId,
-                status: qrData.status
+                status: qrData.status,
+                hasQrCode: !!qrData.qrcode
             });
 
             return {
                 id: qrData.transactionId,
-                status: qrData.status,
-                amount: qrData.amount,
-                qrCode: qrData.qrcode,
+                status: qrData.status || 'PENDING',
+                amount: qrData.amount || payment.amount,
+                qrCode: qrData.qrcode || '',   // qrcode = string base64 ou código EMV
                 transactionId: qrData.transactionId
             };
         } catch (error) {
@@ -173,66 +205,54 @@ export class CodexPayService {
         }
     }
 
-    async getPaymentStatus(paymentId: string): Promise<any> {
-        try {
-            console.log('🔍 CODEXPAY: Consultando status do pagamento:', paymentId);
-            // Tentar sequencialmente endpoints comuns
-            const endpoints = [
-                `/api/transaction/${paymentId}`,
-                `/api/payments/status/${paymentId}`,
-                `/api/payments/${paymentId}`,
-                `/api/payment/${paymentId}`
-            ];
-
-            for (const endpoint of endpoints) {
-                try {
-                    console.log(`🔍 CODEXPAY: Tentando endpoint: ${endpoint}`);
-                    return await this.makeRequest(endpoint, 'GET');
-                } catch (err: any) {
-                    if (err.message.includes('404')) {
-                        console.log(`ℹ️ CODEXPAY: ${endpoint} não encontrado (404).`);
-                        continue;
-                    }
-                    throw err; // Outros erros (401, 500) devem parar a execução
-                }
-            }
-            throw new Error(`Nenhum endpoint de status encontrado para a transação ${paymentId}`);
-        } catch (error) {
-            console.error('🔥 CODEXPAY: Erro ao consultar status do pagamento:', error);
-            throw error;
-        }
-    }
-
+    /**
+     * Solicitar saque via PIX
+     * POST /api/withdrawals/withdraw
+     * Parâmetros: amount, name, document, external_id, pix_key, key_type, description, clientCallbackUrl
+     */
     async createWithdrawal(withdrawal: CodexPayWithdrawal): Promise<CodexPayWithdrawalResponse> {
         console.log('💎 CODEXPAY: Criando saque PIX:', {
             amount: withdrawal.amount,
             pixKey: withdrawal.pixKey,
+            pixKeyType: withdrawal.pixKeyType,
             externalId: withdrawal.externalId
         });
 
+        // Remover caracteres não numéricos do CPF
+        const cleanDocument = withdrawal.document.replace(/\D/g, '');
+
+        // Payload conforme documentação oficial
+        // key_type deve ser: CPF, EMAIL, PHONE, RANDOM (uppercase)
         const payload = {
             amount: withdrawal.amount,
-            pix_key: withdrawal.pixKey,
-            pix_key_type: withdrawal.pixKeyType.toLowerCase(),
+            name: withdrawal.name,
+            document: cleanDocument,
             external_id: withdrawal.externalId,
-            description: withdrawal.description,
+            pix_key: withdrawal.pixKey,
+            key_type: withdrawal.pixKeyType.toUpperCase(),  // Campo correto: key_type (não pix_key_type)
+            description: withdrawal.description || 'Saque da plataforma',
             clientCallbackUrl: withdrawal.callbackUrl
         };
 
         try {
             const response = await this.makeRequest('/api/withdrawals/withdraw', 'POST', payload);
 
-            const wData = response.withdrawal;
+            // A API retorna: { message, withdrawal: { transaction_id, status, amount, type } }
+            const wData = response.withdrawal || response;
+
+            if (!wData) {
+                throw new Error('CODEXPAY: Resposta inválida - withdrawal não encontrado');
+            }
 
             console.log('✅ CODEXPAY: Saque PIX criado com sucesso:', {
-                transactionId: wData.transactionId,
+                transactionId: wData.transaction_id || wData.transactionId,
                 status: wData.status
             });
 
             return {
-                id: wData.transactionId,
-                status: wData.status,
-                amount: wData.amount,
+                id: wData.transaction_id || wData.transactionId || withdrawal.externalId,
+                status: wData.status || 'COMPLETED',
+                amount: wData.amount || withdrawal.amount,
                 fee: wData.fee
             };
         } catch (error) {
@@ -241,30 +261,40 @@ export class CodexPayService {
         }
     }
 
+    /**
+     * Verificar saldo da conta no gateway
+     * A documentação oficial não expõe um endpoint de saldo público.
+     * Retorna 0 se não disponível.
+     */
     async getBalance(): Promise<number> {
         try {
-            // Tentativa de obter o saldo usando múltiplos endpoints comuns
+            // Tentar endpoint de saldo (pode não existir na CodexPay)
             const endpoints = [
-                '/api/balance',
                 '/api/account/balance',
-                '/api/merchants/balance',
+                '/api/balance',
                 '/api/merchant/balance'
             ];
 
             for (const endpoint of endpoints) {
                 try {
-                    console.log(`💰 CODEXPAY: Tentando saldo em: ${endpoint}`);
+                    console.log(`💰 CODEXPAY: Verificando saldo em: ${endpoint}`);
                     const response = await this.makeRequest(endpoint, 'GET');
-                    return response.balance || response.amount || response.data?.balance || 0;
+                    const balance = response.balance || response.amount || response.data?.balance;
+                    if (balance !== undefined && balance !== null) {
+                        return Number(balance);
+                    }
                 } catch (err: any) {
-                    if (err.message.includes('404')) {
-                        console.log(`ℹ️ CODEXPAY: Saldo em ${endpoint} não encontrado (404).`);
+                    if (err.message.includes('404') || err.message.includes('405')) {
+                        console.log(`ℹ️ CODEXPAY: Endpoint ${endpoint} não disponível.`);
                         continue;
                     }
+                    // Para outros erros (401, 500), parar
                     console.warn(`⚠️ CODEXPAY: Erro ao consultar ${endpoint}:`, err.message);
+                    break;
                 }
             }
 
+            console.log('ℹ️ CODEXPAY: Endpoint de saldo não disponível na API.');
             return 0;
         } catch (error) {
             console.error('🔥 CODEXPAY: Erro ao consultar saldo:', error);
@@ -300,10 +330,9 @@ export async function createCodexPayService(gatewayId?: number): Promise<CodexPa
         const clientSecret = process.env.CODEXPAY_CLIENT_SECRET || '';
 
         if (!clientId || !clientSecret) {
-            throw new Error('Configuração CODEXPAY não encontrada (DB ou ENV)');
+            throw new Error('Configuração CODEXPAY não encontrada (DB ou ENV). Configure o gateway no painel admin.');
         }
 
         return new CodexPayService(clientId, clientSecret);
     }
 }
-
