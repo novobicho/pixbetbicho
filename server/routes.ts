@@ -7039,14 +7039,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const payload = req.body;
       console.log('🔔 CODEXPAY: Webhook recebido:', JSON.stringify(payload, null, 2));
 
-      // Extrair dados de forma resiliente (pode vir no root ou aninhado em .transaction ou .data)
+      // Extrair dados de forma resiliente
       const data = payload.transaction || payload.data || payload;
 
-      // Identificadores possíveis
-      const transactionId = data.transaction_id || data.transactionId || data.id || payload.transaction_id || payload.id;
-      const externalId = data.external_id || data.externalId || data.reference || payload.external_id || payload.externalId;
+      // Identificadores (prioridade para ID do gateway, depois nossa referência)
+      const transactionId = data.transaction_id || data.transactionId || data.id ||
+        payload.transaction_id || payload.transactionId || payload.id;
 
-      console.log(`🔍 CODEXPAY: Identificadores extraídos - transactionId: ${transactionId}, externalId: ${externalId}`);
+      const externalId = data.external_id || data.externalId || data.reference ||
+        payload.external_id || payload.externalId || payload.reference;
+
+      console.log(`🔍 CODEXPAY: Identificadores - transactionId: ${transactionId}, externalId: ${externalId}`);
 
       // 1. Buscar transação no banco (tentar pelo ID do gateway primeiro)
       let transaction;
