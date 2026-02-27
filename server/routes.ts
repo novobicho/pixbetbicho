@@ -5,6 +5,7 @@ import { setupAuth, comparePasswords, hashPassword } from "./auth";
 import { pool, db } from "./db";
 import { createEzzebankService } from "./services/ezzebank";
 import { createCodexPayService } from "./services/codexpay";
+import { createAsaasService } from "./services/asaas";
 import { z } from "zod";
 import fs from "fs-extra";
 import path from "path";
@@ -5020,6 +5021,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`💸 SAQUE: Processando saque de R$ ${withdrawalAmount} para usuário ${userId}, chave PIX: ${pixKey}`);
 
+      // Verificar se há gateway Asaas ativo
+      const asaasGateway = await storage.getPaymentGatewayByType("asaas");
+
+      if (asaasGateway?.isActive) {
+        try {
+          console.log(`Asaas: Processando saque automático para usu ${userId}`);
+          const asaasService = await createAsaasService();
+          let ourExternalId = `WD_${Date.now()}_${userId}`;
+
+          let asaasKeyType = req.body.pixKeyType;
+          if (asaasKeyType === 'CHAVE_ALEATORIA') asaasKeyType = 'EVP';
+          if (asaasKeyType === 'TELEFONE') asaasKeyType = 'PHONE';
+
+          const gatewayWithdrawal = await asaasService.createWithdrawal({
+            amount,
+            name: req.user!.name || req.user!.username,
+            document: req.user!.cpf || "",
+            externalId: ourExternalId,
+            pixKey: req.body.pixKey,
+            pixKeyType: asaasKeyType as any,
+            description: 'Saque automatizado.'
+          });
+
+          const paymentTransaction = await storage.createPaymentTransaction({
+            userId,
+            gatewayId: asaasGateway.id,
+            amount: amount,
+            status: 'pending',
+            type: 'withdrawal',
+            externalId: gatewayWithdrawal.id,
+            gatewayResponse: gatewayWithdrawal
+          });
+
+          const withdrawal = await storage.createWithdrawal({
+            userId,
+            amount,
+            pixKey: req.body.pixKey,
+            pixKeyType: req.body.pixKeyType,
+            status: "processing",
+            notes: `Processando via Asaas. External ID: ${gatewayWithdrawal.id}`
+          });
+
+          await storage.updateTransactionStatusAndRelatedId(paymentTransaction.id, "pending", withdrawal.id);
+
+          userBalanceDetails.balance -= amount;
+          await storage.updateUser(userId, { balance: userBalanceDetails.balance });
+
+          await storage.createTransaction({
+            userId,
+            type: "withdrawal",
+            amount: -amount,
+            description: "Saque solicitado via (Asaas)",
+            relatedId: withdrawal.id
+          });
+
+          return res.json({
+            success: true,
+            message: "Saque em processamento via Asaas",
+            withdrawal
+          });
+        } catch (gwErr: any) {
+          console.error("Erro Asaas Saque:", gwErr);
+          return res.status(500).json({ message: `Falha gateway Asaas: ${gwErr.message}` });
+        }
+      }
+
       // Verificar se há gateway CodexPay ativo
       const codexpayGateway = await storage.getPaymentGatewayByType("codexpay");
 
@@ -5229,6 +5296,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  async function checkAsaasBalance(): Promise<number> {
+    try {
+      const asaasService = await (await import('./services/asaas')).createAsaasService();
+      return await asaasService.getBalance();
+    } catch (error) {
+      console.error("Erro ao verificar saldo Asaas:", error);
+      return 0;
+    }
+  }
+
   app.get('/api/admin/gateway-balance', requireAdmin, async (req, res) => {
     try {
       let balance = 0;
@@ -5236,10 +5313,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const pushinpayGateway = await storage.getPaymentGatewayByType("pushinpay");
       const codexpayGateway = await storage.getPaymentGatewayByType("codexpay");
+      const asaasGateway = await storage.getPaymentGatewayByType("asaas");
 
       if (pushinpayGateway?.isActive) {
         gatewayName = "Pushin Pay";
         balance = await checkPushinPayBalance();
+      } else if (asaasGateway?.isActive) {
+        gatewayName = "Asaas";
+        balance = await checkAsaasBalance();
       } else if (codexpayGateway?.isActive) {
         gatewayName = "CodexPay";
         balance = await checkCodexPayBalance();
@@ -7016,6 +7097,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========== CODEXPAY ROUTES ==========
 
   // Criar pagamento PIX com CODEXPAY
+  app.post("/api/asaas/create-pix-payment", requireAuth, async (req, res) => {
+    try {
+      const { amount } = req.body;
+      const user = await storage.getUser(req.user!.id);
+
+      if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
+      if (!amount || amount <= 0) return res.status(400).json({ message: "Valor inválido" });
+
+      const asaasGateway = await storage.getPaymentGatewayByType("asaas");
+      if (!asaasGateway || !asaasGateway.isActive) {
+        return res.status(400).json({ message: "Gateway Asaas não está ativo" });
+      }
+
+      const asaasService = await createAsaasService();
+
+      const externalId = `ASAAS_DEP_${Date.now()}_${user.id}`;
+      const transaction = await storage.createPaymentTransaction({
+        userId: user.id,
+        gatewayId: asaasGateway.id,
+        amount: amount,
+        status: "pending",
+        type: "deposit",
+        externalId: externalId
+      });
+
+      console.log(`Asaas: Criando pagamento PIX: ${amount} para usuario ${user.id}`);
+
+      const paymentResponse = await asaasService.createPixPayment({
+        amount,
+        externalId,
+        customerName: user.name || user.username || "Cliente",
+        customerEmail: user.email || `user${user.id}@plataforma.com`,
+        customerDocument: user.cpf || ""
+      });
+
+      await storage.updatePaymentTransaction(transaction.id, {
+        externalId: paymentResponse.id,
+        gatewayResponse: paymentResponse
+      });
+
+      res.json({
+        success: true,
+        transactionId: transaction.id,
+        externalId: paymentResponse.id,
+        qrCode: paymentResponse.qrCode,
+        amount: paymentResponse.amount
+      });
+    } catch (error: any) {
+      console.error("Asaas create payment error:", error);
+      res.status(500).json({ message: error.message || "Erro interno ao processar Asaas" });
+    }
+  });
+
   app.post("/api/codexpay/create-pix-payment", requireAuth, async (req, res) => {
     try {
       const { amount, useBonus } = req.body;
@@ -7220,6 +7354,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ========= WEBHOOK CODEXPAY =========
   // Recebe notificações assíncronas de pagamento e saque
+  app.post("/api/asaas/webhook", async (req, res) => {
+    try {
+      console.log('🔔 ASAAS WEBHOOK RECEBIDO:', req.body);
+      const { event, payment, transfer } = req.body;
+
+      // se for pagamento (deposito)
+      if (payment && payment.id) {
+        let externalId = payment.id;
+        const transaction = await storage.getPaymentTransactionByExternalId(externalId);
+
+        if (transaction && transaction.status === "pending") {
+          if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
+            const asaasGateway = await storage.getPaymentGatewayByType("asaas");
+            await approveTransaction(transaction, "Asaas_Webhook", asaasGateway || undefined);
+          } else if (event === 'PAYMENT_DELETED' || event === 'PAYMENT_OVERDUE') {
+            await storage.updatePaymentTransactionStatus(transaction.id, "failed");
+          }
+        }
+      }
+
+      // se for transferencia (saque)
+      if (transfer && transfer.id) {
+        let externalId = transfer.id;
+        const transaction = await storage.getPaymentTransactionByExternalId(externalId);
+
+        if (transaction && transaction.status === "pending" && transaction.type === 'withdrawal') {
+          if (event === 'TRANSFER_DONE' || event === 'TRANSFER_EFFECTIVATED') {
+            await storage.updatePaymentTransactionStatus(transaction.id, "completed");
+            if (transaction.relatedId) {
+              await storage.updateWithdrawalStatus(transaction.relatedId, 'approved', undefined, 'Saque confirmado via Webhook Asaas');
+            }
+          } else if (event === 'TRANSFER_FAILED' || event === 'TRANSFER_CANCELLED') {
+            await storage.updatePaymentTransactionStatus(transaction.id, "failed");
+            // Optionally refund to user balance
+          }
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("ASAAS Webhook err:", error);
+      res.status(500).json({ error: 'Erro interno webhook' });
+    }
+  });
+
   app.post("/api/codexpay/webhook", async (req, res) => {
     try {
       const payload = req.body;
