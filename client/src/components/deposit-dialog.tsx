@@ -357,14 +357,18 @@ export function DepositDialog({
           amount: data.amount,
           useBonus: data.useBonus
         });
-        return await res.json();
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || result.message || "Erro ao criar pagamento");
+        return result;
       } else if (gateway?.type === "codexpay") {
         // CodexPay (PIX)
         const res = await apiRequest("POST", "/api/codexpay/create-pix-payment", {
           amount: data.amount,
           useBonus: data.useBonus
         });
-        return await res.json();
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || result.message || "Erro ao criar pagamento via CodexPay");
+        return result;
       } else {
         throw new Error("Método de pagamento não suportado");
       }
@@ -372,21 +376,35 @@ export function DepositDialog({
     onSuccess: (data) => {
       toast({
         title: "Depósito iniciado",
-        description: "Sua solicitação de depósito foi iniciada com sucesso.",
+        description: "Escaneie o QR Code PIX para completar o pagamento.",
       });
 
-      // Guardar detalhes da transação e alterar o estado
-      console.log("Payment response:", data);
-      setTransactionDetail(data);
+      // Normalizar dados da resposta para o formato esperado pela UI
+      // Suporta tanto CodexPay quanto PushinPay
+      const normalizedData = {
+        ...data,
+        // transactionId: ID interno do banco (para polling)
+        transactionId: data.transactionId || data.payment?.transactionId || data.id,
+        // amount: valor do depósito
+        amount: data.amount || data.payment?.amount,
+        // QR Code: pode vir em diferentes campos
+        pixCopyPasteCode: data.pixCopyPasteCode || data.payment?.qrCode || data.paymentDetails?.qr_code,
+        payment: {
+          ...(data.payment || {}),
+          qrCode: data.payment?.qrCode || data.payment?.qrCodeImage || data.pixCopyPasteCode,
+          qrCodeImage: data.payment?.qrCodeImage || data.payment?.qrCode,
+          amount: data.payment?.amount || data.amount,
+        }
+      };
+
+      console.log("💎 DEPOSIT: Resposta normalizada:", JSON.stringify(normalizedData, null, 2));
+      setTransactionDetail(normalizedData);
       setTransactionStatus('processing');
       form.reset();
 
       // Iniciar polling para verificar status do pagamento
-      startPolling(data.transactionId);
-
-      // Se houver uma URL externa, redirecionar (em produção)
-      if (data.externalUrl) {
-        window.open(data.externalUrl, "_blank");
+      if (normalizedData.transactionId) {
+        startPolling(normalizedData.transactionId);
       }
 
       // Atualizar os dados do usuário
