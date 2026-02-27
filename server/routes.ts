@@ -5243,7 +5243,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (codexpayGateway?.isActive) {
         gatewayName = "CodexPay";
         balance = await checkCodexPayBalance();
-        if (balance === 0) balance = 20.00; // Valor informado pelo usuário como fallback
       }
 
       res.json({ balance, gatewayName });
